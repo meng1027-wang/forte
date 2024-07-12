@@ -265,7 +265,7 @@ double FCISolver::compute_energy() {
 
     // Run the Davidson-Liu solver
     dl_solver_->add_sigma_builder(sigma_builder);
-
+    std::cout << "fci_solver-solve" << std::endl;
     auto converged = dl_solver_->solve();
     if (not converged) {
         throw std::runtime_error(
@@ -327,8 +327,15 @@ void FCISolver::print_solutions(size_t sample_size, std::shared_ptr<psi::Vector>
 
 	std::stringstream filename_stream;
 	double spin2_value = (spin2_[r] < 1.0e-12) ? 0 : spin2_[r];
-	filename_stream << "output_root" << r << "_" << spin2_value << "_" << symmetry_ << ".txt";
+        
+	int twice_ms = state().twice_ms();
+	double ms_my = twice_ms / 2.0;
+	filename_stream << "output_root" << r << "_" << spin2_value << "_" << symmetry_ << "_" << "ms" 
+			<< "_" << ms_my << ".txt";
+
+	//std::cout << "Calculated ms: " << ms_my << std::endl;
         std::string filename = filename_stream.str();
+	//std::cout << "Generated filename: " << filename << std::endl;
 
         // 打开文件
         output_file.open(filename);

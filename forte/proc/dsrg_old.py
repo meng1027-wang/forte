@@ -140,6 +140,7 @@ class ProcedureDSRG:
 
         # Compute RDMs from initial ActiveSpaceSolver
         self.rdms = active_space_solver.compute_average_rdms(state_weights_map, self.max_rdm_level, self.rdm_type)
+        # print(self.rdms)
         #write_external_rdm_file(self.rdms, self.active_space_solver)
         
         # Save a copy CI vectors
@@ -228,20 +229,9 @@ class ProcedureDSRG:
             #       However, the ForteIntegrals object and the dipole integrals always refer to the current semi-canonical basis.
             #       so to compute the dipole moment correctly, we need to make the RDMs and orbital basis consistent
             ints_dressed = self.dsrg_solver.compute_Heff_actv()
-
-            # 加的
-            max_rdm_level = 3 if self.options.get_bool("FORM_HBAR3") else 2
-            hamiltonian_c, substats_info = self.active_space_solver.get_hamiltonian(ints_dressed, max_rdm_level)
-            hamiltonian = hamiltonian_c.to_array()
-            np.save('hamiltonian.npy', hamiltonian)
-            with open('hamiltonian.txt', 'w')as a:
-                print(hamiltonian, file=a)
-            np.save('substates.npy', np.array(substats_info))
-            with open('substates.txt', 'w')as b:
-                print(substats_info, file=b)
-
             if self.Meff_implemented and (self.max_dipole_level > 0 or self.max_quadrupole_level > 0):
                 asmpints = self.dsrg_solver.compute_mp_eff_actv()
+            #print('test20240401')
             #state_map = forte.to_state_nroots_map(self.state_weights_map)
             #write_external_active_space_file(ints_dressed, state_map, self.mo_space_info, "dsrg_ints.json")
 
@@ -249,7 +239,33 @@ class ProcedureDSRG:
                 state_map = forte.to_state_nroots_map(self.state_weights_map)
                 write_external_active_space_file(ints_dressed, state_map, self.mo_space_info, "dsrg_ints.json")
                 nmo = ints_dressed.nmo()
-            
+                # print('-----------oei_a-----------------')
+                # for i in range(nmo):
+                #     for j in range(nmo):
+                #         print(i, j, ints_dressed.oei_a(i,j))
+
+                # print('-----------oei_b----------------')
+                # for i in range(nmo):
+                #     for j in range(nmo):
+                #         print(i, j, ints_dressed.oei_b(i,j))
+                # print('------------tei_aa---------------')
+                # for i in range(nmo):
+                #     for j in range(nmo):
+                #         for k in range(nmo):
+                #             for l in range(nmo):
+                #                 print(i, j, k, l, ints_dressed.tei_aa(i, j, k, l))
+                # print('------------tei_bb---------------')
+                # for i in range(nmo):
+                #     for j in range(nmo):
+                #         for k in range(nmo):
+                #             for l in range(nmo):
+                #                 print(i, j, k, l, ints_dressed.tei_bb(i, j, k, l))
+                # print('------------tei_ab---------------')
+                # for i in range(nmo):
+                #     for j in range(nmo):
+                #         for k in range(nmo):
+                #             for l in range(nmo):
+                #                 print(i, j, k, l, ints_dressed.tei_ab(i, j, k, l))
                 msg = "External solver: save DSRG dressed integrals to dsrg_ints.json"
                 print(msg)
                 psi4.core.print_out(msg)
@@ -282,10 +298,7 @@ class ProcedureDSRG:
                 e_relax = forte.compute_average_state_energy(state_energies_list, self.state_weights_map)
                 self.energies.append((e_dsrg, e_relax))
                 break
-            
 
-        
-            # end
             # Call the active space solver using the dressed integrals
             self.active_space_solver.set_active_space_integrals(ints_dressed)
             # pass to the active space solver the unitary transformation between the original basis
@@ -336,9 +349,6 @@ class ProcedureDSRG:
                 self.rdms = self.active_space_solver.compute_average_rdms(
                     self.state_weights_map, self.max_rdm_level, self.rdm_type
                 )
-            #下面两行并不打印，可能是未开启参考弛豫
-            #print('^^^^^^^^^^^^^^^^^')
-            #print(self.rdms)
 
             # - Transform RDMs to the semi-canonical basis used in the last step (stored in self.Ua/self.Ub)
             #   We do this because the integrals and amplitudes are all expressed in the previous semi-canonical basis

@@ -120,6 +120,13 @@ class ActiveSpaceSolver {
     // std::vector<double>
     // compute_pdms(std::shared_ptr<forte::ActiveSpaceIntegrals> as_ints, int max_rdm_level);
     //end
+
+    //自己加的                          
+    std::tuple<psi::Matrix, std::vector<std::string>> get_hamiltonian(std::shared_ptr<ActiveSpaceIntegrals> as_ints,
+                                                         int max_rdm_level);
+    // std::vector<double>
+    // compute_pdms(std::shared_ptr<forte::ActiveSpaceIntegrals> as_ints, int max_rdm_level);
+    //end
     
    /*
    //test

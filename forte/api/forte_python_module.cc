@@ -111,10 +111,17 @@ void export_ActiveSpaceSolver(py::module& m) {
              "Solve the contracted CI eigenvalue problem using given integrals")
         .def("compute_average_rdms", &ActiveSpaceSolver::compute_average_rdms,
              "Compute the weighted average reference")
+
         //加的
-        .def("compute_pdms", &ActiveSpaceSolver::compute_pdms,
-             "Compute the tansition density matrix")
+        .def("get_hamiltonian", &ActiveSpaceSolver::get_hamiltonian,
+             "as_ints"_a, "max_body"_a,
+             "get the matrix of hamiltonian of dsrg(unrelaxed)")  
         // end
+
+     //    // 加的   
+     //    .def("compute_pdms", &ActiveSpaceSolver::compute_pdms,
+     //         "Compute the tansition density matrix")
+     //    // end
         .def("state_energies_map", &ActiveSpaceSolver::state_energies_map,
              "Return a map of StateInfo to the computed nroots of energies")
         .def("set_active_space_integrals", &ActiveSpaceSolver::set_active_space_integrals,

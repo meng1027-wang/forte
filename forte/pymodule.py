@@ -56,7 +56,7 @@ from forte.proc.external_active_space_solver import (
     make_hamiltonian,
 )
 from forte.proc.dsrg import ProcedureDSRG
-
+import numpy as np
 
 def forte_driver(data: ForteData):
     """
@@ -87,6 +87,8 @@ def forte_driver(data: ForteData):
 
     # map state to number of roots
     state_map = forte.to_state_nroots_map(state_weights_map)
+    #下面这两行执行
+    #print('###############')
     #print(state_map) 
     #打印内容：{Singlet (Ms = 0) A1 GAS min: 0 0 0 0 0 0 ; GAS max: 8 0 0 0 0 0 ;: 1, Triplet (Ms = 0) A1 GAS min: 0 0 0 0 0 0 ; GAS max: 8 0 0 0 0 0 ;: 1}
 
@@ -98,17 +100,29 @@ def forte_driver(data: ForteData):
     data = ActiveSpaceSolver(solver_type=active_space_solver_type).run(data)
     state_energies_list = data.state_energies_list
 
-    if options.get_bool("WRITE_RDM"):
+    if options.get_bool("WRITE_RDM"):#不论是casscf还是dsrg,只要有这个option，这一部分就会执行
         max_rdm_level = 3  # TODO allow the user to change this variable
-        data = ActiveSpaceRDMs(max_rdm_level=max_rdm_level).run(data)
-        write_external_rdm_file(data.rdms, data.active_space_solver) #错误点:这里给到这个函数的data.rdms不是态平均的
-        pdms_li = ActiveSpacePDMs(max_rdm_level=max_rdm_level).run(data)
-        #
-        for pdms in pdms_li:
-            indice = pdms_li.index(pdms)
-            write_external_pdm_file(pdms, data.active_space_solver, indice)
+        # print('#########test') #执行
+        data = ActiveSpaceRDMs(max_rdm_level=max_rdm_level).run(data) #查c++里代码：Compute the state-averaged reference
+        # print(f'data type is {type(data)}')
+        write_external_rdm_file(data.rdms, data.active_space_solver) #错误点:这里给到这个函数的data.rdms不是态平均的->应该已经改正了
 
+        # #之前为了获得dsrg的pdm而加的
+        # pdms_li = ActiveSpacePDMs(max_rdm_level=max_rdm_level).run(data)
+        # print(type(pdms_li))
+        # print(pdms_li)
+        # #
+        # for pdms in pdms_li:
+        #     indice = pdms_li.index(pdms)
+        #     write_external_pdm_file(pdms, data.active_space_solver, indice)
+        # end
 
+        # 为了直接获得dsrg(unrelaxed)的hamiltonian矩阵而加的
+        # hamiltonian_c = ActiveSpacePDMs(max_rdm_level=max_rdm_level).run(data)
+        # print(type(hamiltonian_c))
+        # hamiltonian = hamiltonian_c.to_array()
+        # np.save('hamiltonian.npy', hamiltonian)
+        
 
     if options.get_bool("SPIN_ANALYSIS"):
         data = ActiveSpaceRDMs(max_rdm_level=2, rdms_type=forte.RDMsType.spin_dependent).run(data)

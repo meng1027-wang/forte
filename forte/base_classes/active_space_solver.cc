@@ -29,6 +29,7 @@
 #include <algorithm>
 #include <numeric>
 #include <tuple>
+#include <string>
 
 #include "ambit/blocked_tensor.h"
 #include "ambit/tensor.h"
@@ -529,6 +530,10 @@ make_state_weights_map(std::shared_ptr<ForteOptions> options,
                         psi::outfile->Printf("\n  Error: negative weights in AVG_WEIGHT.");
                         throw std::runtime_error("Negative weights in AVG_WEIGHT.");
                     }
+
+                    // for (int i = 0; i < multi; ++i) {
+                    //     weights.push_back(w);
+                    // }
                     weights.push_back(w);
                 }
             }
@@ -609,10 +614,6 @@ make_state_weights_map(std::shared_ptr<ForteOptions> options,
                 // j += 1;
             // 新加的重新测试end
             }
-
-            // state_weights_map[state_this] = weights;
-
-
         }
 
         // normalize weights
@@ -621,6 +622,7 @@ make_state_weights_map(std::shared_ptr<ForteOptions> options,
             std::transform(weights.begin(), weights.end(), weights.begin(),
                            [sum_of_weights](auto& w) { return w / sum_of_weights; });
         }
+        
 
     }
 
@@ -747,7 +749,7 @@ ActiveSpaceSolver::compute_contracted_energy(std::shared_ptr<ActiveSpaceIntegral
         print_h2("Building Effective Hamiltonian for " + state_name);
         psi::Matrix Heff("Heff " + state_name, nroots, nroots);
 
-        for (size_t A = 0; A < nroots; ++A) {
+        for (size_t A = 0; A < nroots; ++A) { 
             for (size_t B = A; B < nroots; ++B) {
                 // just compute transition rdms of <A|sqop|B>
                 std::vector<std::pair<size_t, size_t>> root_list{std::make_pair(A, B)};
@@ -858,6 +860,98 @@ std::vector<std::shared_ptr<RDMs>> ActiveSpaceSolver::compute_pdms(std::shared_p
     // 返回包含所有RDMs对象的容器
     return all_rdms;
 }
+
+// 待改-hamiltonian
+std::tuple<psi::Matrix, std::vector<std::string>> ActiveSpaceSolver::get_hamiltonian(std::shared_ptr<ActiveSpaceIntegrals> as_ints,
+                                             int max_rdm_level) {
+    if (state_method_map_.size() == 0) {
+        throw psi::PSIEXCEPTION("Old CI determinants are not solved. Call compute_energy first.");
+    }
+
+    state_energies_map_.clear();
+    state_contracted_evecs_map_.clear();
+
+    // prepare integrals
+    size_t nactv = mo_space_info_->size("ACTIVE");
+    auto init_fill_tensor = [nactv](std::string name, size_t dim, std::vector<double> data) {
+        ambit::Tensor out =
+            ambit::Tensor::build(ambit::CoreTensor, name, std::vector<size_t>(dim, nactv));
+        out.data() = data;
+        return out;
+    };
+    ambit::Tensor oei_a = init_fill_tensor("oei_a", 2, as_ints->oei_a_vector());
+    ambit::Tensor oei_b = init_fill_tensor("oei_a", 2, as_ints->oei_b_vector());
+    ambit::Tensor tei_aa = init_fill_tensor("tei_aa", 4, as_ints->tei_aa_vector());
+    ambit::Tensor tei_ab = init_fill_tensor("tei_ab", 4, as_ints->tei_ab_vector());
+    ambit::Tensor tei_bb = init_fill_tensor("tei_bb", 4, as_ints->tei_bb_vector());
+
+    // TODO: check three-body integrals available or not
+    //    bool do_three_body = (max_body_ == 3 and max_rdm_level_ == 3) ? true : false;
+
+    // TODO: adapt DressedQuantity for spin-free RDMs
+    DressedQuantity ints(0.0, oei_a, oei_b, tei_aa, tei_ab, tei_bb);
+
+ 
+    // Calculate total size for the hamiltonian matrix---加的
+    size_t total_size = 0;
+    for (const auto& state_nroots : state_nroots_map_) {
+        total_size += state_nroots.second;
+    }
+
+    // Create the hamiltonian matrix---加的
+    psi::Matrix hamiltonian("Hamiltonian", total_size, total_size);
+    std::vector<std::string> substates;
+
+    size_t current_offset = 0;//---加的
+
+
+    for (const auto& state_nroots : state_nroots_map_) {
+        const auto& state = state_nroots.first;
+        size_t nroots = state_nroots.second;
+        std::string state_name = state.multiplicity_label() + " " + state.irrep_label();
+        auto method = state_method_map_.at(state);
+        // std::cout << "pdms_test"<< state_name << std::endl; //自己加的
+        // form the Hermitian effective Hamiltonian
+        print_h2("Building Effective Hamiltonian for " + state_name);
+        psi::Matrix Heff("Heff " + state_name, nroots, nroots);
+
+        for (size_t A = 0; A < nroots; ++A) { 
+            std::string info_substate = std::to_string(A)+ " " + std::to_string(state.multiplicity()) 
+            + " " + std::to_string(state.irrep()) + " " + std::to_string(state.twice_ms()); 
+            substates.push_back(info_substate);
+            for (size_t B = A; B < nroots; ++B) {
+                // just compute transition rdms of <A|sqop|B>
+                std::vector<std::pair<size_t, size_t>> root_list{std::make_pair(A, B)};
+                std::shared_ptr<RDMs> rdms =
+                    method->rdms(root_list, max_rdm_level, RDMsType::spin_dependent)[0];
+                for (int i = 0; i < 10; ++i) {
+                    std::cout << "*";
+                }
+                std::cout << std::endl; // 换行
+                double H_AB = ints.contract_with_rdms(rdms);
+                if (A == B) {
+                    H_AB += as_ints->nuclear_repulsion_energy() + as_ints->scalar_energy() +
+                            as_ints->frozen_core_energy();
+                    Heff.set(A, B, H_AB);
+                } else {
+                    Heff.set(A, B, H_AB);
+                    Heff.set(B, A, H_AB);
+                }
+            }
+        }
+
+        // Insert Heff into the hamiltonian matrix---加的
+        for (size_t A = 0; A < nroots; ++A) {
+            for (size_t B = 0; B < nroots; ++B) {
+                hamiltonian.set(current_offset + A, current_offset + B, Heff.get(A, B));
+            }
+        }
+        current_offset += nroots;
+    }
+
+    return std::make_tuple(hamiltonian, substates);
+}
+
 
 
 /*

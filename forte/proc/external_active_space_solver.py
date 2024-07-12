@@ -155,68 +155,68 @@ def write_external_active_space_file(as_ints, state_map, mo_space_info, json_fil
             "data": tei,
             "description": "antisymmetrized two-electron integrals as a list of tuples (i,j,k,l,<ij||kl>)",
         }
-        # print('-----------oei_a-----------------')
-        # oei_a, oei_b = np.zeros((nmo, nmo)), np.zeros((nmo, nmo))
-        # with open('oei_a.txt', 'w')as a:
-        #     for i in range(nmo):
-        #         for j in range(nmo):
-        #             print(i, j, as_ints.oei_a(i,j), file=a)
-        #             oei_a[i, j] = as_ints.oei_a(i,j)
-        # np.save('oei_a_psi4.npy', oei_a)
+        print('-----------oei_a-----------------')
+        oei_a, oei_b = np.zeros((nmo, nmo)), np.zeros((nmo, nmo))
+        with open('oei_a.txt', 'w')as a:
+            for i in range(nmo):
+                for j in range(nmo):
+                    print(i, j, as_ints.oei_a(i,j), file=a)
+                    oei_a[i, j] = as_ints.oei_a(i,j)
+        np.save('oei_a_psi4.npy', oei_a)
         
 
-        # print('-----------oei_b----------------')
-        # with open('oei_b.txt', 'w')as b:
-        #     for i in range(nmo):
-        #         for j in range(nmo):
-        #             print(i, j, as_ints.oei_b(i,j), file=b)
-        #             oei_b[i, j] = as_ints.oei_b(i,j)
-        # np.save('oei_b_psi4.npy', oei_b)
+        print('-----------oei_b----------------')
+        with open('oei_b.txt', 'w')as b:
+            for i in range(nmo):
+                for j in range(nmo):
+                    print(i, j, as_ints.oei_b(i,j), file=b)
+                    oei_b[i, j] = as_ints.oei_b(i,j)
+        np.save('oei_b_psi4.npy', oei_b)
 
 
         tei_aa, tei_bb, tei_ab = np.zeros((nmo, nmo, nmo, nmo)), np.zeros((nmo, nmo, nmo, nmo)), np.zeros((nmo, nmo, nmo, nmo))
 
-        # print('------------tei_aa---------------')
-        # with open('tei_aa.txt', 'w')as c:
-        #     for i in range(nmo):
-        #         for j in range(nmo):
-        #             for k in range(nmo):
-        #                 for l in range(nmo):
-        #                     print(i, j, k, l, as_ints.tei_aa(i, j, k, l), file=c)
-        #                     tei_aa[i,j,k,l] = as_ints.tei_aa(i,j,k,l)
-        # np.save('tei_aa_psi4.npy', tei_aa)
+        print('------------tei_aa---------------')
+        with open('tei_aa.txt', 'w')as c:
+            for i in range(nmo):
+                for j in range(nmo):
+                    for k in range(nmo):
+                        for l in range(nmo):
+                            print(i, j, k, l, as_ints.tei_aa(i, j, k, l), file=c)
+                            tei_aa[i,j,k,l] = as_ints.tei_aa(i,j,k,l)
+        np.save('tei_aa_psi4.npy', tei_aa)
     
-        # print('------------tei_bb---------------')
-        # with open('tei_bb.txt', 'w')as d:
-        #     for i in range(nmo):
-        #         for j in range(nmo):
-        #             for k in range(nmo):
-        #                 for l in range(nmo):
-        #                     print(i, j, k, l, as_ints.tei_bb(i, j, k, l), file=d)
-        #                     tei_bb[i,j,k,l] = as_ints.tei_bb(i,j,k,l)
-        # np.save('tei_bb_psi4.npy', tei_bb)
+        print('------------tei_bb---------------')
+        with open('tei_bb.txt', 'w')as d:
+            for i in range(nmo):
+                for j in range(nmo):
+                    for k in range(nmo):
+                        for l in range(nmo):
+                            print(i, j, k, l, as_ints.tei_bb(i, j, k, l), file=d)
+                            tei_bb[i,j,k,l] = as_ints.tei_bb(i,j,k,l)
+        np.save('tei_bb_psi4.npy', tei_bb)
 
-        # print('------------tei_ab---------------')
-        # with open('tei_ab.txt', 'w')as e:
-        #     for i in range(nmo):
-        #         for j in range(nmo):
-        #             for k in range(nmo):
-        #                 for l in range(nmo):
-        #                     print(i, j, k, l, as_ints.tei_ab(i, j, k, l), file=e)
-        #                     tei_ab[i,j,k,l] = as_ints.tei_ab(i,j,k,l)
-        # np.save('tei_ab_psi4.npy', tei_ab)
+        print('------------tei_ab---------------')
+        with open('tei_ab.txt', 'w')as e:
+            for i in range(nmo):
+                for j in range(nmo):
+                    for k in range(nmo):
+                        for l in range(nmo):
+                            print(i, j, k, l, as_ints.tei_ab(i, j, k, l), file=e)
+                            tei_ab[i,j,k,l] = as_ints.tei_ab(i,j,k,l)
+        np.save('tei_ab_psi4.npy', tei_ab)
 
-        # dets = dets_inac(7, 4)[0]
-        # ndets = len(dets)
-        # H = np.ndarray((ndets,ndets))
-        # for I, detI in enumerate(dets):
-        #     for J, detJ in enumerate(dets):
-        #         H[I][J] = as_ints.slater_rules(detI,detJ)
-        # with open('H.txt', 'w')as g:
-        #     print(H, file=g)
+        dets = dets_inac(7, 4)[0]
+        ndets = len(dets)
+        H = np.ndarray((ndets,ndets))
+        for I, detI in enumerate(dets):
+            for J, detJ in enumerate(dets):
+                H[I][J] = as_ints.slater_rules(detI,detJ)
+        with open('H.txt', 'w')as g:
+            print(H, file=g)
         
-        # eigval, eigvec = np.linalg.eigh(H)
-        # print((eigval[0] + scalar_energy))
+        eigval, eigvec = np.linalg.eigh(H)
+        print((eigval[0] + scalar_energy))
 
         with open(json_file, "w+") as f:
             json.dump(file, f, sort_keys=True, indent=2)

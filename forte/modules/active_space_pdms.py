@@ -20,13 +20,15 @@ class ActiveSpacePDMs(Module):
         super().__init__()
         self.max_rdm_level = max_rdm_level
         self.rdms_type = rdms_type
-    def _run(self, data: ForteData):
-        import forte
-        all_pdms = data.active_space_solver.compute_pdms(data.as_ints, self.max_rdm_level)
-        ue = data.active_space_solver.compute_contracted_energy(data.as_ints, self.max_rdm_level)
-        return all_pdms
-    # def _get_ue(self,  data: ForteData):
+    # def _run(self, data: ForteData):
     #     import forte
+    #     all_pdms = data.active_space_solver.compute_pdms(data.as_ints, self.max_rdm_level)
+    #     print('--------------test---pdms--------------')
     #     ue = data.active_space_solver.compute_contracted_energy(data.as_ints, self.max_rdm_level)
     #     print('--------------test---contracted_energy--------------')
-    #     return ue
+    #     print(ue)
+    #     return all_pdms
+    def _run(self, data: ForteData):
+        import forte
+        hamiltonian, substates = data.active_space_solver.get_hamiltonian(data.as_ints, self.max_rdm_level)
+        return hamiltonian, substates

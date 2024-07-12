@@ -185,7 +185,7 @@ bool DavidsonLiuSolver::solve() {
     preiteration_sanity_checks();
 
     print_header();
-    std::cout << "test_solver" << std::endl;
+    //std::cout << "test_solver" << std::endl;
 
     for (size_t iter = 0; iter < max_iter_; iter++) {
         // ensure that the basis is orthonormal
@@ -351,8 +351,8 @@ void DavidsonLiuSolver::print_footer() {
 }
 
 void DavidsonLiuSolver::print_iteration(size_t iter) {
-    if (print_ < PrintLevel::Default)
-        return;
+    //if (print_ < PrintLevel::Default) //我注释掉的
+    //    return;
 
     auto e_diff = lambda_->clone();
     e_diff.axpy(-1.0, *lambda_old_);
