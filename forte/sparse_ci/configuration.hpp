@@ -5,7 +5,7 @@
  * that implements a variety of quantum chemistry methods for strongly
  * correlated electrons.
  *
- * Copyright (c) 2012-2023 by its authors (see COPYING, COPYING.LESSER,
+ * Copyright (c) 2012-2024 by its authors (see COPYING, COPYING.LESSER,
  * AUTHORS).
  *
  * The copyrights for code used from other parties are included in
@@ -27,8 +27,7 @@
  * @END LICENSE
  */
 
-#ifndef _configuration_h_
-#define _configuration_h_
+#pragma once
 
 namespace forte {
 
@@ -125,6 +124,14 @@ template <size_t N> class ConfigurationImpl : public BitArray<N> {
     /// Count the number of singly occupied orbitals
     int count_socc() const { return count(nwords_half, nwords_); }
 
+    BitArray<nbits_half> get_docc_str() const {
+        BitArray<nbits_half> str;
+        for (size_t k = 0; k < nwords_half; ++k) {
+            str.set_word(k, words_[k]);
+        }
+        return str;
+    }
+
     /// Return a vector with the indices of the doubly occupied orbitals
     /// @param docc_vec is a vector large enough to contain the list of orbitals
     void get_docc_vec(int norb, std::vector<int>& docc_vec) const {
@@ -194,5 +201,3 @@ std::string str(const ConfigurationImpl<N>& d, int n = ConfigurationImpl<N>::nbi
 }
 
 } // namespace forte
-
-#endif // _configuration_h_

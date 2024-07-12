@@ -26,6 +26,10 @@ double DressedQuantity::contract_with_rdms(std::shared_ptr<RDMs> rdms) {
     if (max_rdm_level >= 1 and max_body_ >= 1) {
         out += a_("uv") * rdms->g1a()("vu");
         out += b_("uv") * rdms->g1b()("vu");
+	a_.print();
+	rdms->g1a().print();
+	b_.print();
+	rdms->g1b().print();
     }
 
     if (max_rdm_level >= 2 and max_body_ >= 2) {

@@ -5,7 +5,7 @@
  * that implements a variety of quantum chemistry methods for strongly
  * correlated electrons.
  *
- * Copyright (c) 2012-2023 by its authors (see COPYING, COPYING.LESSER, AUTHORS).
+ * Copyright (c) 2012-2024 by its authors (see COPYING, COPYING.LESSER, AUTHORS).
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -30,6 +30,9 @@
 #include <numeric>
 #include <tuple>
 
+#include "ambit/blocked_tensor.h"
+#include "ambit/tensor.h"
+
 #include "psi4/psi4-dec.h"
 #include "psi4/libmints/molecule.h"
 #include "psi4/libmints/vector.h"
@@ -47,21 +50,21 @@
 #include "active_space_method.h"
 
 #include "active_space_solver.h"
-
+#include <iostream>
 namespace forte {
 
 ActiveSpaceSolver::ActiveSpaceSolver(const std::string& method,
                                      const std::map<StateInfo, size_t>& state_nroots_map,
                                      std::shared_ptr<SCFInfo> scf_info,
                                      std::shared_ptr<MOSpaceInfo> mo_space_info,
-                                     std::shared_ptr<ActiveSpaceIntegrals> as_ints,
-                                     std::shared_ptr<ForteOptions> options)
+                                     std::shared_ptr<ForteOptions> options,
+                                     std::shared_ptr<ActiveSpaceIntegrals> as_ints)
     : method_(method), state_nroots_map_(state_nroots_map), scf_info_(scf_info),
-      mo_space_info_(mo_space_info), as_ints_(as_ints), options_(options) {
+      mo_space_info_(mo_space_info), options_(options), as_ints_(as_ints) {
 
-    print_options();
+    // print_options();
 
-    print_ = options->get_int("PRINT");
+    print_ = int_to_print_level(options->get_int("PRINT"));
     e_convergence_ = options->get_double("E_CONVERGENCE");
     r_convergence_ = options->get_double("R_CONVERGENCE");
     read_initial_guess_ = options->get_bool("READ_ACTIVE_WFN_GUESS");
@@ -76,34 +79,76 @@ ActiveSpaceSolver::ActiveSpaceSolver(const std::string& method,
         Ua_data[i * nactv + i] = 1.0;
         Ub_data[i * nactv + i] = 1.0;
     }
+}
 
-    // initialize multipole integrals
-    if (as_ints_->ints()->integral_type() != Custom) {
-        auto mp_ints = std::make_shared<MultipoleIntegrals>(as_ints_->ints(), mo_space_info_);
-        as_mp_ints_ = std::make_shared<ActiveMultipoleIntegrals>(mp_ints);
+void ActiveSpaceSolver::set_print(PrintLevel level) { print_ = level; }
+
+void ActiveSpaceSolver::set_e_convergence(double e_convergence) { e_convergence_ = e_convergence; }
+
+void ActiveSpaceSolver::set_r_convergence(double r_convergence) { r_convergence_ = r_convergence; }
+
+void ActiveSpaceSolver::set_maxiter(int maxiter) { maxiter_ = maxiter; }
+
+void ActiveSpaceSolver::set_active_space_integrals(std::shared_ptr<ActiveSpaceIntegrals> as_ints) {
+    as_ints_ = as_ints;
+    for (const auto& [state, method] : state_method_map_) {
+        method->set_active_space_integrals(as_ints_);
     }
 }
 
-void ActiveSpaceSolver::set_print(int level) { print_ = level; }
+void ActiveSpaceSolver::set_active_multipole_integrals(
+    std::shared_ptr<ActiveMultipoleIntegrals> as_mp_ints) {
+    as_mp_ints_ = as_mp_ints;
+}
+
+const std::map<StateInfo, std::vector<double>>& ActiveSpaceSolver::state_energies_map() const {
+    return state_energies_map_;
+}
 
 const std::map<StateInfo, std::vector<double>>& ActiveSpaceSolver::compute_energy() {
+    // check if the integrals are available
+    if (not as_ints_) {
+        throw std::runtime_error("ActiveSpaceSolver: ActiveSpaceIntegrals are not available.");
+    }
+
+    // initialize multipole integrals
+    if (as_ints_->ints()->integral_type() != Custom) {
+        if (not as_mp_ints_) {
+            auto mp_ints = std::make_shared<MultipoleIntegrals>(as_ints_->ints(), mo_space_info_);
+            as_mp_ints_ = std::make_shared<ActiveMultipoleIntegrals>(mp_ints);
+        }
+    }
+
     state_energies_map_.clear();
     for (const auto& state_nroot : state_nroots_map_) {
         const auto& state = state_nroot.first;
         size_t nroot = state_nroot.second;
-        // compute the energy of state and save it
-        std::shared_ptr<ActiveSpaceMethod> method = make_active_space_method(
-            method_, state, nroot, scf_info_, mo_space_info_, as_ints_, options_);
+
+        // so far only FCI and DETCI supports restarting from a previous wavefunction
+        if ((method_ == "FCI") or (method_ == "DETCI")) {
+            auto [it, inserted] = state_method_map_.try_emplace(state);
+            if (inserted) {
+                it->second = make_active_space_method(method_, state, nroot, scf_info_,
+                                                      mo_space_info_, as_ints_, options_);
+            }
+            auto method = it->second;
+        } else {
+            state_method_map_[state] = make_active_space_method(method_, state, nroot, scf_info_,
+                                                                mo_space_info_, as_ints_, options_);
+        }
+        auto method = state_method_map_[state];
+        // set the convergence criteria
         method->set_print(print_);
         method->set_e_convergence(e_convergence_);
         method->set_r_convergence(r_convergence_);
-        state_method_map_[state] = method;
+        method->set_maxiter(maxiter_);
 
         if (read_initial_guess_) {
             state_filename_map_[state] = method->wfn_filename();
             method->set_read_wfn_guess(read_initial_guess_);
         }
 
+        // compute the energy of state and save it
         method->compute_energy();
         const auto& energies = method->energies();
         state_energies_map_[state] = energies;
@@ -144,11 +189,28 @@ void ActiveSpaceSolver::validate_spin(const std::vector<double>& spin2, const St
 }
 
 void ActiveSpaceSolver::print_energies() {
+    std::vector<std::string> irrep_symbol = mo_space_info_->irrep_labels();
+
+    for (const auto& state_nroot : state_nroots_map_) {
+        const auto& state = state_nroot.first;
+        int irrep = state.irrep();
+        int multi = state.multiplicity();
+        int nstates = state_nroot.second;
+        for (int i = 0; i < nstates; ++i) {
+            double energy = state_energies_map_[state][i];
+            auto label = "ENERGY ROOT " + std::to_string(i) + " " + std::to_string(multi) +
+                         irrep_symbol[irrep];
+            push_to_psi4_env_globals(energy, upper_string(label));
+        }
+    }
+
+    if (print_ < PrintLevel::Brief)
+        return;
+
     print_h2("Energy Summary");
     psi::outfile->Printf("\n    Multi.(2ms)  Irrep.  No.               Energy      <S^2>");
     std::string dash(56, '-');
     psi::outfile->Printf("\n    %s", dash.c_str());
-    std::vector<std::string> irrep_symbol = mo_space_info_->irrep_labels();
 
     for (const auto& state_nroot : state_nroots_map_) {
         const auto& state = state_nroot.first;
@@ -167,12 +229,7 @@ void ActiveSpaceSolver::print_energies() {
                 psi::outfile->Printf("\n     %3d  (%3d)   %3s    %2d  %20.12f       n/a", multi,
                                      twice_ms, irrep_symbol[irrep].c_str(), i, energy);
             }
-
-            auto label = "ENERGY ROOT " + std::to_string(i) + " " + std::to_string(multi) +
-                         irrep_symbol[irrep];
-            push_to_psi4_env_globals(energy, upper_string(label));
         }
-
         psi::outfile->Printf("\n    %s", dash.c_str());
     }
 }
@@ -289,6 +346,25 @@ std::vector<std::shared_ptr<RDMs>> ActiveSpaceSolver::rdms(
     return refs;
 }
 
+void ActiveSpaceSolver::generalized_rdms(const StateInfo& state, size_t root,
+                                         const std::vector<double>& X, ambit::BlockedTensor& result,
+                                         bool c_right, int rdm_level,
+                                         std::vector<std::string> spin) {
+    state_method_map_[state]->generalized_rdms(root, X, result, c_right, rdm_level, spin);
+}
+
+void ActiveSpaceSolver::add_sigma_kbody(const StateInfo& state, size_t root,
+                                        ambit::BlockedTensor& h,
+                                        const std::map<std::string, double>& block_label_to_factor,
+                                        std::vector<double>& sigma) {
+    state_method_map_[state]->add_sigma_kbody(root, h, block_label_to_factor, sigma);
+}
+
+void ActiveSpaceSolver::generalized_sigma(const StateInfo& state, std::shared_ptr<psi::Vector> x,
+                                          std::shared_ptr<psi::Vector> sigma) {
+    state_method_map_[state]->generalized_sigma(x, sigma);
+}
+
 void ActiveSpaceSolver::print_options() {
     print_h2("Summary of Active Space Solver Input");
 
@@ -321,9 +397,9 @@ void ActiveSpaceSolver::print_options() {
 std::shared_ptr<ActiveSpaceSolver> make_active_space_solver(
     const std::string& method, const std::map<StateInfo, size_t>& state_nroots_map,
     std::shared_ptr<SCFInfo> scf_info, std::shared_ptr<MOSpaceInfo> mo_space_info,
-    std::shared_ptr<ActiveSpaceIntegrals> as_ints, std::shared_ptr<ForteOptions> options) {
+    std::shared_ptr<ForteOptions> options, std::shared_ptr<ActiveSpaceIntegrals> as_ints) {
     return std::make_shared<ActiveSpaceSolver>(method, state_nroots_map, scf_info, mo_space_info,
-                                               as_ints, options);
+                                               options, as_ints);
 }
 
 std::map<StateInfo, size_t>
@@ -339,7 +415,6 @@ std::map<StateInfo, std::vector<double>>
 make_state_weights_map(std::shared_ptr<ForteOptions> options,
                        std::shared_ptr<MOSpaceInfo> mo_space_info) {
     std::map<StateInfo, std::vector<double>> state_weights_map;
-
     // make a StateInfo object using the information from psi4
     // TODO: need to optimize for spin-free RDMs
     auto state = make_state_info_from_psi(options); // assumes low-spin
@@ -458,6 +533,7 @@ make_state_weights_map(std::shared_ptr<ForteOptions> options,
                 }
             }
             sum_of_weights += std::accumulate(std::begin(weights), std::end(weights), 0.0);
+            // std::cout << sum_of_weights << std::endl;
 
             for (int gasn = 0; gasn < 6; gasn++) {
                 auto gas_space_min =
@@ -483,10 +559,60 @@ make_state_weights_map(std::shared_ptr<ForteOptions> options,
                     gas_max[gasn] = gas_space_max[i];
                 }
             }
+            // 原来的
+            // StateInfo state_this(state.na(), state.nb(), multi, state.twice_ms(), irrep,
+            //                      irrep_label, gas_min, gas_max);
+            // state_weights_map[state_this] = weights;
 
-            StateInfo state_this(state.na(), state.nb(), multi, state.twice_ms(), irrep,
-                                 irrep_label, gas_min, gas_max);
-            state_weights_map[state_this] = weights;
+
+            // 新加的 start -> 有点问题
+            // int multi = state.multiplicity();
+            /*
+                        for (int ms = (-(multi- 1) / 2); ms <= ((multi - 1) / 2); ++ms) {
+                int nel = state.na() + state.nb();
+                size_t na = (nel + 2 * ms) / 2;
+                size_t nb = nel - na;
+                StateInfo state_this(na, nb, multi, 2 * ms, irrep, irrep_label,
+                                     gas_min, gas_max);
+                std::transform(weights.begin(), weights.end(), weights.begin(),
+                                [multi](auto& w) { return w / multi; });
+                // 新加的 end
+                state_weights_map[state_this] = weights;
+            } 
+            */       
+            // 新加的 end -> 有点问题
+
+            // 新加的重新测试start
+            // int j = 0;
+            for (double ms = (-(multi- 1) / 2.0); ms <= ((multi - 1) / 2.0); ++ms) {
+                // std::cout << ms << std::endl;
+                int nel = state.na() + state.nb();
+                size_t na = (nel + 2 * ms) / 2;
+                size_t nb = nel - na;
+                StateInfo state_this(na, nb, multi, 2 * ms, irrep, irrep_label,
+                                     gas_min, gas_max);
+
+                // 重新初始化weights为初始值，假设每个weights初始都是1
+                // std::vector<double> local_weights(weights.size(), 1.0);  // 假设weights.size()已知，且初始值为1
+                
+                // std::transform(local_weights.begin(), local_weights.end(), local_weights.begin(),
+                //                 [multi](auto& w) { return w / multi; });
+                // state_weights_map[state_this] = local_weights;
+
+                std::vector<double> local_weights = weights;
+                std::transform(local_weights.begin(), local_weights.end(), local_weights.begin(),
+                                [multi](auto& w) { return w / multi; });
+                state_weights_map[state_this] = local_weights;
+                
+                
+                // state_weights_map[state_this].insert(state_weights_map[state_this].end(), weights.begin(), weights.end());
+                // j += 1;
+            // 新加的重新测试end
+            }
+
+            // state_weights_map[state_this] = weights;
+
+
         }
 
         // normalize weights
@@ -495,6 +621,7 @@ make_state_weights_map(std::shared_ptr<ForteOptions> options,
             std::transform(weights.begin(), weights.end(), weights.begin(),
                            [sum_of_weights](auto& w) { return w / sum_of_weights; });
         }
+
     }
 
     // print function
@@ -545,7 +672,6 @@ std::shared_ptr<RDMs> ActiveSpaceSolver::compute_average_rdms(
             rdms->axpy(method_rdms, weights[r]);
         }
     }
-
     return rdms;
 }
 
@@ -573,8 +699,8 @@ void ActiveSpaceSolver::dump_wave_function() {
     }
 }
 
-std::map<StateInfo, psi::SharedMatrix> ActiveSpaceSolver::state_ci_wfn_map() const {
-    std::map<StateInfo, psi::SharedMatrix> out;
+std::map<StateInfo, std::shared_ptr<psi::Matrix>> ActiveSpaceSolver::state_ci_wfn_map() const {
+    std::map<StateInfo, std::shared_ptr<psi::Matrix>> out;
     for (const auto& pair : state_method_map_) {
         out[pair.first] = pair.second->ci_wave_functions();
     }
@@ -616,7 +742,7 @@ ActiveSpaceSolver::compute_contracted_energy(std::shared_ptr<ActiveSpaceIntegral
         size_t nroots = state_nroots.second;
         std::string state_name = state.multiplicity_label() + " " + state.irrep_label();
         auto method = state_method_map_.at(state);
-
+        // std::cout << "pdms_test"<< state_name << std::endl; //自己加的
         // form the Hermitian effective Hamiltonian
         print_h2("Building Effective Hamiltonian for " + state_name);
         psi::Matrix Heff("Heff " + state_name, nroots, nroots);
@@ -627,7 +753,10 @@ ActiveSpaceSolver::compute_contracted_energy(std::shared_ptr<ActiveSpaceIntegral
                 std::vector<std::pair<size_t, size_t>> root_list{std::make_pair(A, B)};
                 std::shared_ptr<RDMs> rdms =
                     method->rdms(root_list, max_rdm_level, RDMsType::spin_dependent)[0];
-
+                for (int i = 0; i < 10; ++i) {
+                    std::cout << "*";
+                }
+                std::cout << std::endl; // 换行
                 double H_AB = ints.contract_with_rdms(rdms);
                 if (A == B) {
                     H_AB += as_ints->nuclear_repulsion_energy() + as_ints->scalar_energy() +
@@ -660,6 +789,142 @@ ActiveSpaceSolver::compute_contracted_energy(std::shared_ptr<ActiveSpaceIntegral
     return state_energies_map_;
 }
 
+
+// 自己加的
+std::vector<std::shared_ptr<RDMs>> ActiveSpaceSolver::compute_pdms(std::shared_ptr<ActiveSpaceIntegrals> as_ints,
+                                                                   int max_rdm_level) {
+// std::vector<double> ActiveSpaceSolver::compute_pdms(std::shared_ptr<ActiveSpaceIntegrals> as_ints,
+//                                                                    int max_rdm_level) {
+    if (state_method_map_.size() == 0) {
+        throw psi::PSIEXCEPTION("Old CI determinants are not solved. Call compute_energy first.");
+    }
+
+    state_energies_map_.clear();
+    state_contracted_evecs_map_.clear();
+
+    // prepare integrals
+    size_t nactv = mo_space_info_->size("ACTIVE");
+    auto init_fill_tensor = [nactv](std::string name, size_t dim, std::vector<double> data) {
+        ambit::Tensor out =
+            ambit::Tensor::build(ambit::CoreTensor, name, std::vector<size_t>(dim, nactv));
+        out.data() = data;
+        return out;
+    };
+    ambit::Tensor oei_a = init_fill_tensor("oei_a", 2, as_ints->oei_a_vector());
+    ambit::Tensor oei_b = init_fill_tensor("oei_a", 2, as_ints->oei_b_vector());
+    ambit::Tensor tei_aa = init_fill_tensor("tei_aa", 4, as_ints->tei_aa_vector());
+    ambit::Tensor tei_ab = init_fill_tensor("tei_ab", 4, as_ints->tei_ab_vector());
+    ambit::Tensor tei_bb = init_fill_tensor("tei_bb", 4, as_ints->tei_bb_vector());
+
+    // TODO: check three-body integrals available or not
+    //    bool do_three_body = (max_body_ == 3 and max_rdm_level_ == 3) ? true : false;
+
+    // TODO: adapt DressedQuantity for spin-free RDMs
+    DressedQuantity ints(0.0, oei_a, oei_b, tei_aa, tei_ab, tei_bb);
+
+    std::vector<std::shared_ptr<RDMs>> all_rdms;
+    // std::vector<double> all_rdms;
+
+    for (const auto& state_nroots : state_nroots_map_) {
+        const auto& state = state_nroots.first;
+        size_t nroots = state_nroots.second;
+        std::string state_name = state.multiplicity_label() + " " + state.irrep_label();
+        auto method = state_method_map_.at(state);
+
+        // form the Hermitian effective Hamiltonian
+        print_h2("Building Effective Hamiltonian for " + state_name);
+        psi::Matrix Heff("Heff " + state_name, nroots, nroots);
+
+        for (size_t A = 0; A < nroots; ++A) {
+            for (size_t B = A; B < nroots; ++B) {
+                // just compute transition rdms of <A|sqop|B>
+                std::vector<std::pair<size_t, size_t>> root_list{std::make_pair(A, B)};
+                std::shared_ptr<RDMs> rdms =
+                    method->rdms(root_list, max_rdm_level, RDMsType::spin_dependent)[0];
+
+                double H_AB = ints.contract_with_rdms(rdms);
+                if (A == B) {
+                    H_AB += as_ints->nuclear_repulsion_energy() + as_ints->scalar_energy() +
+                            as_ints->frozen_core_energy();
+                }
+                // 将计算出的RDMs对象添加到容器中
+                // all_rdms.push_back(H_AB);
+                // 将计算出的RDMs对象添加到容器中
+                all_rdms.push_back(rdms);
+
+            }
+        }
+    }
+    // 返回包含所有RDMs对象的容器
+    return all_rdms;
+}
+
+
+/*
+// test
+std::map<std::string, std::shared_ptr<RDMs>> ActiveSpaceSolver::compute_pdms(std::shared_ptr<ActiveSpaceIntegrals> as_ints,
+                                                                   int max_rdm_level) {
+    if (state_method_map_.size() == 0) {
+        throw psi::PSIEXCEPTION("Old CI determinants are not solved. Call compute_energy first.");
+    }
+
+    state_energies_map_.clear();
+    state_contracted_evecs_map_.clear();
+
+    // prepare integrals
+    size_t nactv = mo_space_info_->size("ACTIVE");
+    auto init_fill_tensor = [nactv](std::string name, size_t dim, std::vector<double> data) {
+        ambit::Tensor out =
+            ambit::Tensor::build(ambit::CoreTensor, name, std::vector<size_t>(dim, nactv));
+        out.data() = data;
+        return out;
+    };
+    ambit::Tensor oei_a = init_fill_tensor("oei_a", 2, as_ints->oei_a_vector());
+    ambit::Tensor oei_b = init_fill_tensor("oei_a", 2, as_ints->oei_b_vector());
+    ambit::Tensor tei_aa = init_fill_tensor("tei_aa", 4, as_ints->tei_aa_vector());
+    ambit::Tensor tei_ab = init_fill_tensor("tei_ab", 4, as_ints->tei_ab_vector());
+    ambit::Tensor tei_bb = init_fill_tensor("tei_bb", 4, as_ints->tei_bb_vector());
+
+    // TODO: check three-body integrals available or not
+    //    bool do_three_body = (max_body_ == 3 and max_rdm_level_ == 3) ? true : false;
+
+    // TODO: adapt DressedQuantity for spin-free RDMs
+    DressedQuantity ints(0.0, oei_a, oei_b, tei_aa, tei_ab, tei_bb);
+
+    std::vector<std::shared_ptr<RDMs>> all_rdms;
+    std::map<std::string, std::shared_ptr<RDMs>> all_rdms_map;
+
+    for (const auto& state_nroots : state_nroots_map_) {
+        const auto& state = state_nroots.first;
+        size_t nroots = state_nroots.second;
+        std::string state_name = state.multiplicity_label() + " " + state.irrep_label();
+        auto method = state_method_map_.at(state);
+        //std::cout << state_name << endl;
+
+        // form the Hermitian effective Hamiltonian
+        print_h2("Building Effective Hamiltonian for " + state_name);
+        psi::Matrix Heff("Heff " + state_name, nroots, nroots);
+
+        for (size_t A = 0; A < nroots; ++A) {
+            for (size_t B = A; B < nroots; ++B) {
+                // just compute transition rdms of <A|sqop|B>
+                std::vector<std::pair<size_t, size_t>> root_list{std::make_pair(A, B)};
+                std::shared_ptr<RDMs> rdms =
+                    method->rdms(root_list, max_rdm_level, RDMsType::spin_dependent)[0];
+
+                // 将计算出的RDMs对象添加到容器中
+                all_rdms.push_back(rdms);
+                std::string key = state.toString() + "_" + std::to_string(root_list.first) + "_" + std::to_string(root_list.second);
+                all_rdms_map[key] = rdms;
+
+            }
+        }
+    }
+    // 返回包含所有RDMs对象的容器
+    return all_rdms_map;
+}
+*/
+
 double
 compute_average_state_energy(const std::map<StateInfo, std::vector<double>>& state_energies_map,
                              const std::map<StateInfo, std::vector<double>>& state_weight_map) {
@@ -673,6 +938,20 @@ compute_average_state_energy(const std::map<StateInfo, std::vector<double>>& sta
             std::inner_product(energies.begin(), energies.end(), weights.begin(), 0.0);
     }
     return average_energy;
+}
+
+std::map<StateInfo, size_t> ActiveSpaceSolver::state_space_size_map() const {
+    std::map<StateInfo, size_t> out;
+    for (const auto& state_method : state_method_map_) {
+        const auto& state = state_method.first;
+        const auto& method = state_method.second;
+        out[state] = method->space_size();
+    }
+    return out;
+}
+
+std::vector<ambit::Tensor> ActiveSpaceSolver::eigenvectors(const StateInfo& state) const {
+    return state_method_map_.at(state)->eigenvectors();
 }
 
 } // namespace forte
