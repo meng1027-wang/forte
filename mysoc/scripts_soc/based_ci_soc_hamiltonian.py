@@ -137,16 +137,35 @@ def h_soc_element(nact, forte_ci_dict1, forte_ci_dict2, irrep_order, mo_irrep, f
     h_element = np.einsum('xij,xij->', f_pq, tdm)
     return h_element
 
-def h_soc_based_ci(nact, ci_list, ireep_order, mo_irrep, f_pq):
+# def h_soc_based_ci(nact, ci_list, ireep_order, mo_irrep, f_pq):
+#     h_soc = np.zeros((len(ci_list), len(ci_list)), dtype=complex)
+#     # print(len(ci_list))
+#     for i_ci in ci_list:
+#         for j_ci in ci_list:
+#             # if i_ci == ci_list[0] and j_ci == ci_list[1]:
+#             element = h_soc_element(nact, i_ci, j_ci, ireep_order, mo_irrep, f_pq)
+#             # print(f'element: {element}')
+#             indice1 = ci_list.index(i_ci)
+#             indice2 = ci_list.index(j_ci)
+#             h_soc[indice1, indice2] += element        
+    return h_soc
+def h_soc_based_ci(nact, ci_list, ireep_order, mo_irrep, f_pq, info_list):
     h_soc = np.zeros((len(ci_list), len(ci_list)), dtype=complex)
     # print(len(ci_list))
-    for i_ci in ci_list:
-        for j_ci in ci_list:
-            # if i_ci == ci_list[0] and j_ci == ci_list[1]:
-            element = h_soc_element(nact, i_ci, j_ci, ireep_order, mo_irrep, f_pq)
-            # print(f'element: {element}')
-            indice1 = ci_list.index(i_ci)
+    for indice1, i_ci in enumerate(ci_list):
+        for j_ci in ci_list[indice1:]:
             indice2 = ci_list.index(j_ci)
-            h_soc[indice1, indice2] += element        
+            
+            i_info = info_list[indice1]
+            _, multi_i, _, ms2_i = i_info.split(' ')
+            
+            j_info = info_list[indice2]
+            _, multi_j, _, ms2_j = j_info.split(' ')
+            # if i_ci == ci_list[0] and j_ci == ci_list[1]:
+            if abs(int(multi_i) - int(multi_j)) <= 2:
+                if abs(int(ms2_i) - int(ms2_j)) <= 2:
+                    element = h_soc_element(nact, i_ci, j_ci, ireep_order, mo_irrep, f_pq)
+                    # print(f'element: {element}')
+                    h_soc[indice1, indice2] += element     
+                    h_soc[indice2, indice1] += np.conj(element)
     return h_soc
-
