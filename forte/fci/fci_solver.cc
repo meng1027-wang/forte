@@ -47,7 +47,8 @@
 #endif
 
 #include "psi4/psi4-dec.h"
-
+#include <fstream> //为了打印
+#include <iomanip> // 包含 <iomanip> 头文件
 namespace forte {
 
 class MOSpaceInfo;
@@ -58,8 +59,8 @@ FCISolver::FCISolver(StateInfo state, size_t nroot, std::shared_ptr<MOSpaceInfo>
       active_dim_(mo_space_info->dimension("ACTIVE")), nirrep_(as_ints->ints()->nirrep()),
       symmetry_(state.irrep()) {
     // TODO: read this info from the base class
-    na_ = state.na() - mo_space_info->size("INACTIVE_DOCC");
-    nb_ = state.nb() - mo_space_info->size("INACTIVE_DOCC");
+    na_ = state.na() - core_mo_.size() - mo_space_info->size("FROZEN_DOCC");
+    nb_ = state.nb() - core_mo_.size() - mo_space_info->size("FROZEN_DOCC");
 }
 
 void FCISolver::set_maxiter_davidson(int value) { maxiter_davidson_ = value; }
@@ -122,7 +123,7 @@ void FCISolver::startup() {
     lists_ = std::make_shared<FCIStringLists>(mo_space_info_, na_, nb_, print_, gas_size, gas_min,
                                               gas_max);
 #else
-    lists_ = std::make_shared<FCIStringLists>(active_dim_, active_mo_, na_, nb_, print_);
+    lists_ = std::make_shared<FCIStringLists>(active_dim_, core_mo_, active_mo_, na_, nb_, print_);
 #endif
 
     nfci_dets_ = 0;
@@ -206,12 +207,12 @@ double FCISolver::compute_energy() {
     if (dl_solver_ == nullptr) {
         dl_solver_ = std::make_shared<DavidsonLiuSolver>(basis_size, nroot_, collapse_per_root_,
                                                          subspace_per_root_);
+        dl_solver_->set_e_convergence(e_convergence_);
+        dl_solver_->set_r_convergence(r_convergence_);
+        dl_solver_->set_print_level(print_);
+        dl_solver_->set_maxiter(maxiter_davidson_);
         first_run = true;
     }
-    dl_solver_->set_e_convergence(e_convergence_);
-    dl_solver_->set_r_convergence(r_convergence_);
-    dl_solver_->set_print_level(print_);
-    dl_solver_->set_maxiter(maxiter_davidson_);
 
     // determine the number of guess vectors
     const size_t num_guess_states = std::min(guess_per_root_ * nroot_, basis_size);
@@ -264,7 +265,7 @@ double FCISolver::compute_energy() {
 
     // Run the Davidson-Liu solver
     dl_solver_->add_sigma_builder(sigma_builder);
-
+    std::cout << "fci_solver-solve" << std::endl;
     auto converged = dl_solver_->solve();
     if (not converged) {
         throw std::runtime_error(
@@ -294,9 +295,13 @@ double FCISolver::compute_energy() {
     eigen_vecs_ = dl_solver_->eigenvectors();
 
     // Print determinants
-    if (print_ >= PrintLevel::Default) {
-        print_solutions(100, b, b_basis, dl_solver_);
-    }
+    //if (print_ >= PrintLevel::Default) {
+    //    print_solutions(10000, b, b_basis, dl_solver_); //已修改，初始为一百
+    //}
+
+    
+    print_solutions(10000, b, b_basis, dl_solver_); //已修改，初始为一百
+    
 
     // Optionally, test the RDMs
     if (test_rdms_) {
@@ -316,31 +321,52 @@ double FCISolver::compute_energy() {
 void FCISolver::print_solutions(size_t sample_size, std::shared_ptr<psi::Vector> b,
                                 std::shared_ptr<psi::Vector> b_basis,
                                 std::shared_ptr<DavidsonLiuSolver> dls) {
+    std::ofstream output_file;
     for (size_t r = 0; r < nroot_; ++r) {
         psi::outfile->Printf("\n\n  ==> Root No. %d <==\n", r);
 
+	std::stringstream filename_stream;
+	double spin2_value = (spin2_[r] < 1.0e-12) ? 0 : spin2_[r];
+        
+	int twice_ms = state().twice_ms();
+	double ms_my = twice_ms / 2.0;
+	filename_stream << "output_root" << r << "_" << spin2_value << "_" << symmetry_ << "_" << "ms" 
+			<< "_" << ms_my << ".txt";
+
+	//std::cout << "Calculated ms: " << ms_my << std::endl;
+        std::string filename = filename_stream.str();
+	//std::cout << "Generated filename: " << filename << std::endl;
+
+        // 打开文件
+        output_file.open(filename);
+   
+        //output_file << "  ==> Root No. " << r << " <==\n";
         b_basis = dls->eigenvector(r);
+
         if (spin_adapt_) {
             spin_adapter_->csf_C_to_det_C(b_basis, b);
         } else {
             b = b_basis;
         }
+
         C_->copy(b);
         std::vector<std::tuple<double, double, size_t, size_t, size_t>> dets_config =
             C_->max_abs_elements(sample_size);
-
+        
         for (auto& det_config : dets_config) {
             double ci_abs, ci;
             size_t h, add_Ia, add_Ib;
             std::tie(ci_abs, ci, h, add_Ia, add_Ib) = det_config;
 
-            if (ci_abs < 0.01)
-                continue;
+            //if (ci_abs < 0.01)
+            //    continue;
 
             auto Ia_v = lists_->alfa_str(h, add_Ia);
             auto Ib_v = lists_->beta_str(h ^ symmetry_, add_Ib);
-
+            
             psi::outfile->Printf("\n    ");
+	    //output_file << "\n";
+
             size_t offset = 0;
             for (int h = 0; h < nirrep_; ++h) {
                 for (int k = 0; k < active_dim_[h]; ++k) {
@@ -349,20 +375,27 @@ void FCISolver::print_solutions(size_t sample_size, std::shared_ptr<psi::Vector>
                     bool b = Ib_v[i];
                     if (a == b) {
                         psi::outfile->Printf("%d", a ? 2 : 0);
+			output_file << (a ? 2 : 0); //自己加的
                     } else {
                         psi::outfile->Printf("%c", a ? 'a' : 'b');
+			output_file << (a ? 'a' : 'b'); //自己加的
                     }
                 }
                 if (active_dim_[h] != 0)
                     psi::outfile->Printf(" ");
+		    output_file << " ";
                 offset += active_dim_[h];
             }
             psi::outfile->Printf("%15.8f", ci);
+	    output_file << std::setprecision(8) << ci;
+	    output_file << "\n";
         }
 
         double root_energy = dl_solver_->eigenvalues()->get(r);
 
         psi::outfile->Printf("\n\n    Total Energy: %20.12f, <S^2>: %8.6f", root_energy, spin2_[r]);
+	//output_file << "\n\n    Total Energy: " << std::setprecision(12) << root_energy << ", <S^2>: " << spin2_[r];
+	output_file.close(); //自己加的
     }
 }
 

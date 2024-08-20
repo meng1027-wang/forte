@@ -54,7 +54,8 @@
 
 #include "forte.h"
 
-#include "mcscf/mcscf_2step.h"
+#include "casscf/casscf.h"
+#include "casscf/mcscf_2step.h"
 #include "fci/fci_solver.h"
 #include "mrdsrg-helper/run_dsrg.h"
 #include "mrdsrg-spin-integrated/master_mrdsrg.h"
@@ -110,6 +111,17 @@ void export_ActiveSpaceSolver(py::module& m) {
              "Solve the contracted CI eigenvalue problem using given integrals")
         .def("compute_average_rdms", &ActiveSpaceSolver::compute_average_rdms,
              "Compute the weighted average reference")
+
+        //加的
+        .def("get_hamiltonian", &ActiveSpaceSolver::get_hamiltonian,
+             "as_ints"_a, "max_body"_a,
+             "get the matrix of hamiltonian of dsrg(unrelaxed)")  
+        // end
+
+     //    // 加的   
+     //    .def("compute_pdms", &ActiveSpaceSolver::compute_pdms,
+     //         "Compute the tansition density matrix")
+     //    // end
         .def("state_energies_map", &ActiveSpaceSolver::state_energies_map,
              "Return a map of StateInfo to the computed nroots of energies")
         .def("set_active_space_integrals", &ActiveSpaceSolver::set_active_space_integrals,
@@ -132,6 +144,12 @@ void export_ActiveSpaceSolver(py::module& m) {
 
     m.def("compute_average_state_energy", &compute_average_state_energy,
           "Compute the average energy given the energies and weights of each state");
+}
+
+void export_CASSCF(py::module& m) {
+    py::class_<CASSCF>(m, "CASSCF")
+        .def("compute_energy", &CASSCF::compute_energy, "Compute the CASSCF energy")
+        .def("compute_gradient", &CASSCF::compute_gradient, "Compute the CASSCF gradient");
 }
 
 void export_MCSCF_2STEP(py::module& m) {
@@ -220,8 +238,8 @@ PYBIND11_MODULE(_forte, m) {
     m.def("make_dsrg_spin_adapted", &make_dsrg_spin_adapted,
           "Make a DSRG pointer (spin-adapted implementation)");
 
+    m.def("make_casscf", &make_casscf, "Make a CASSCF object");
     m.def("make_mcscf_two_step", &make_mcscf_two_step, "Make a 2-step MCSCF object");
-    m.def("make_mcscf", &make_mcscf_two_step, "Make a 2-step MCSCF object");
     m.def("test_lbfgs_rosenbrock", &test_lbfgs_rosenbrock, "Test L-BFGS on Rosenbrock function");
 
     m.def(
@@ -281,11 +299,14 @@ PYBIND11_MODULE(_forte, m) {
         .value("Debug", PrintLevel::Debug)
         .export_values();
 
+    //     py::class_<AdaptiveCI, std::shared_ptr<AdaptiveCI>>(m, "ACI");
+
     export_ForteOptions(m);
 
     export_ActiveSpaceMethod(m);
     export_ActiveSpaceSolver(m);
 
+    export_CASSCF(m);
     export_MCSCF_2STEP(m);
     export_ForteIntegrals(m);
 
@@ -361,7 +382,6 @@ PYBIND11_MODULE(_forte, m) {
              "Set if reading amplitudes in the current directory or not")
         .def("clean_checkpoints", &MASTER_DSRG::clean_checkpoints,
              "Delete amplitudes checkpoint files")
-        .def("converged", &MASTER_DSRG::converged, "Return if amplitudes are converged or not")
         .def("set_ci_vectors", &MASTER_DSRG::set_ci_vectors,
              "Set the CI eigenvector for DSRG-MRPT2 analytic gradients")
         .def("set_active_space_solver", &MASTER_DSRG::set_active_space_solver,
@@ -382,7 +402,6 @@ PYBIND11_MODULE(_forte, m) {
              "Set the map from state to the weights of all computed roots")
         .def("set_read_cwd_amps", &SADSRG::set_read_amps_cwd,
              "Set if reading amplitudes in the current directory or not")
-        .def("converged", &SADSRG::converged, "Return if amplitudes are converged or not")
         .def("clean_checkpoints", &SADSRG::clean_checkpoints, "Delete amplitudes checkpoint files");
 
     // export MRDSRG_SO

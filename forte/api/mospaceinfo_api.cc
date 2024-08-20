@@ -62,7 +62,6 @@ void export_MOSpaceInfo(py::module& m) {
         .def("read_options", &MOSpaceInfo::read_options, "Read options")
         .def("read_from_map", &MOSpaceInfo::read_from_map,
              "Read the space info from a map {spacename -> dimension vector}")
-        .def("reorder", &MOSpaceInfo::reorder, "The input indexing vector used to reorder the MOs")
         .def("set_reorder", &MOSpaceInfo::set_reorder,
              "Reorder MOs according to the input indexing vector")
         .def("compute_space_info", &MOSpaceInfo::compute_space_info,

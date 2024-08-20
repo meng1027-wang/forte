@@ -64,18 +64,15 @@ class ProcedureDSRG:
         self.relax_ref = options.get_str("RELAX_REF")
         if self.relax_ref == "NONE" and self.do_multi_state:
             self.relax_ref = "ONCE"
-        if self.relax_ref != "NONE" and options.get_str("DSRG_TRANS_TYPE") != "UNITARY":
-            psi4.core.print_out("\n  DSRG relaxation only supports UNITARY transformation. Setting RELAX_REF to NONE.")
-            self.relax_ref = "NONE"
 
         self.max_rdm_level = 3 if options.get_str("THREEPDC") != "ZERO" else 2
         if options.get_str("DSRG_3RDM_ALGORITHM") == "DIRECT":
             as_type = options.get_str("ACTIVE_SPACE_SOLVER")
-            if as_type == "BLOCK2" and self.solver_type in ["SA-MRDSRG", "SA_MRDSRG"]:
+            if as_type == "CAS" and self.solver_type in ["SA-MRDSRG", "SA_MRDSRG"]:
                 self.max_rdm_level = 2
             else:
-                psi4.core.print_out("\n  DSRG 3RDM direct algorithm only available for BLOCK2/SA-MRDSRG")
-                psi4.core.print_out("\n  Set DSRG_3RDM_ALGORITHM to 'EXPLICIT' (default)")
+                psi4.core.print_out(f"\n  DSRG 3RDM direct algorithm only available for CAS/SA-MRDSRG")
+                psi4.core.print_out(f"\n  Set DSRG_3RDM_ALGORITHM to 'EXPLICIT' (default)")
                 options.set_str("DSRG_3RDM_ALGORITHM", "EXPLICIT")
 
         self.relax_convergence = float("inf")
@@ -143,7 +140,8 @@ class ProcedureDSRG:
 
         # Compute RDMs from initial ActiveSpaceSolver
         self.rdms = active_space_solver.compute_average_rdms(state_weights_map, self.max_rdm_level, self.rdm_type)
-
+        #write_external_rdm_file(self.rdms, self.active_space_solver)
+        
         # Save a copy CI vectors
         try:
             self.state_ci_wfn_map = active_space_solver.state_ci_wfn_map()
@@ -151,10 +149,8 @@ class ProcedureDSRG:
             print("Warning DSRG Python driver:", err)
             self.state_ci_wfn_map = None
 
-        inactive_mix = options.get_bool("SEMI_CANONICAL_MIX_INACTIVE")
-        active_mix = options.get_bool("SEMI_CANONICAL_MIX_ACTIVE")
         # Semi-canonicalize orbitals and rotation matrices
-        self.semi = forte.SemiCanonical(mo_space_info, ints, options, inactive_mix, active_mix)
+        self.semi = forte.SemiCanonical(mo_space_info, ints, options)
         if self.do_semicanonical:
             self.semi.semicanonicalize(self.rdms)
         self.Ua, self.Ub = self.semi.Ua_t(), self.semi.Ub_t()
@@ -211,7 +207,7 @@ class ProcedureDSRG:
         self.make_dsrg_solver()
         self.dsrg_setup()
         psi4.core.print_out(f"\n  =>** Before self.dsrg_solver.compute_energy() **<=\n")
-        e_dsrg = self.dsrg_solver.compute_energy()
+        e_dsrg = self.dsrg_solver.compute_energy() #执行
         psi4.core.set_scalar_variable("UNRELAXED ENERGY", e_dsrg)
 
         psi4.core.print_out(f"\n  =>** After self.dsrg_solver.compute_energy() **<=\n")
@@ -223,7 +219,7 @@ class ProcedureDSRG:
             self.relax_maxiter = 0
 
         # Reference relaxation procedure
-        for n in range(self.relax_maxiter):
+        for n in range(self.relax_maxiter):#执行
             psi4.core.print_out(f"\n  =>** In reference relaxation loop **<=\n")
             # Grab the effective Hamiltonian in the active space
             # Note: The active integrals (ints_dressed) are in the original basis
@@ -232,12 +228,28 @@ class ProcedureDSRG:
             #       However, the ForteIntegrals object and the dipole integrals always refer to the current semi-canonical basis.
             #       so to compute the dipole moment correctly, we need to make the RDMs and orbital basis consistent
             ints_dressed = self.dsrg_solver.compute_Heff_actv()
+
+            # 加的
+            max_rdm_level = 3 if self.options.get_bool("FORM_HBAR3") else 2
+            hamiltonian_c, substats_info = self.active_space_solver.get_hamiltonian(ints_dressed, max_rdm_level)
+            hamiltonian = hamiltonian_c.to_array()
+            np.save('hamiltonian.npy', hamiltonian)
+            with open('hamiltonian.txt', 'w')as a:
+                print(hamiltonian, file=a)
+            np.save('substates.npy', np.array(substats_info))
+            with open('substates.txt', 'w')as b:
+                print(substats_info, file=b)
+
             if self.Meff_implemented and (self.max_dipole_level > 0 or self.max_quadrupole_level > 0):
                 asmpints = self.dsrg_solver.compute_mp_eff_actv()
+            #state_map = forte.to_state_nroots_map(self.state_weights_map)
+            #write_external_active_space_file(ints_dressed, state_map, self.mo_space_info, "dsrg_ints.json")
 
             if self.options.get_str("ACTIVE_SPACE_SOLVER") == "EXTERNAL":
                 state_map = forte.to_state_nroots_map(self.state_weights_map)
                 write_external_active_space_file(ints_dressed, state_map, self.mo_space_info, "dsrg_ints.json")
+                nmo = ints_dressed.nmo()
+            
                 msg = "External solver: save DSRG dressed integrals to dsrg_ints.json"
                 print(msg)
                 psi4.core.print_out(msg)
@@ -270,14 +282,15 @@ class ProcedureDSRG:
                 e_relax = forte.compute_average_state_energy(state_energies_list, self.state_weights_map)
                 self.energies.append((e_dsrg, e_relax))
                 break
+            
 
+        
+            # end
             # Call the active space solver using the dressed integrals
             self.active_space_solver.set_active_space_integrals(ints_dressed)
             # pass to the active space solver the unitary transformation between the original basis
             # and the current semi-canonical basis
             self.active_space_solver.set_Uactv(self.Ua, self.Ub)
-            if self.options.get_str("ACTIVE_SPACE_SOLVER") == "BLOCK2":
-                self.options.set_bool("READ_ACTIVE_WFN_GUESS", True)
             state_energies_list = self.active_space_solver.compute_energy()
 
             if self.Meff_implemented:
@@ -323,6 +336,9 @@ class ProcedureDSRG:
                 self.rdms = self.active_space_solver.compute_average_rdms(
                     self.state_weights_map, self.max_rdm_level, self.rdm_type
                 )
+            #下面两行并不打印，可能是未开启参考弛豫
+            #print('^^^^^^^^^^^^^^^^^')
+            #print(self.rdms)
 
             # - Transform RDMs to the semi-canonical basis used in the last step (stored in self.Ua/self.Ub)
             #   We do this because the integrals and amplitudes are all expressed in the previous semi-canonical basis
@@ -361,10 +377,6 @@ class ProcedureDSRG:
 
         e_current = e_dsrg if len(self.energies) == 0 else e_relax
         psi4.core.set_scalar_variable("CURRENT ENERGY", e_current)
-
-        if self.solver_type in ["MRDSRG", "SA-MRDSRG", "SA_MRDSRG"]:
-            if not self.dsrg_solver.converged():
-                raise RuntimeError("DSRG amplitudes did not converge!")
 
         return e_current
 
