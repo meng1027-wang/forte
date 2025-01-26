@@ -31,7 +31,6 @@
 #include "fci_string_address.h"
 
 #include "fci_vector.h"
-#include <set> //自个加的
 
 namespace forte {
 
@@ -39,10 +38,8 @@ std::vector<std::tuple<double, double, size_t, size_t, size_t>>
 FCIVector::max_abs_elements(size_t num_dets) {
     num_dets = std::min(num_dets, ndet_);
 
-    //std::vector<std::tuple<double, double, size_t, size_t, size_t>> dets(num_dets);
+    std::vector<std::tuple<double, double, size_t, size_t, size_t>> dets(num_dets);
 
-    std::vector<std::tuple<double, double, size_t, size_t, size_t>> dets;
-    std::set<std::tuple<double, double, size_t, size_t, size_t>> dets_set; // 自己加的，用于保存已插入的 det
     double emin = 0.0;
 
     for (int alfa_sym = 0; alfa_sym < nirrep_; ++alfa_sym) {
@@ -53,22 +50,17 @@ FCIVector::max_abs_elements(size_t num_dets) {
         for (size_t Ia = 0; Ia < maxIa; ++Ia) {
             for (size_t Ib = 0; Ib < maxIb; ++Ib) {
                 double e = std::fabs(C_ha[Ia][Ib]);
-                //if (e > emin) {
-                //    // Find where to inser this determinant
-                //    dets.pop_back();
-                //    auto it = std::find_if(
-                //        dets.begin(), dets.end(),
-                //        [&e](const std::tuple<double, double, size_t, size_t, size_t>& t) {
-                //            return e > std::get<0>(t);
-                //        });
-                //    dets.insert(it, std::make_tuple(e, C_ha[Ia][Ib], alfa_sym, Ia, Ib));
-                //    emin = std::get<0>(dets.back());
-                //}
-		auto det = std::make_tuple(e, C_ha[Ia][Ib], alfa_sym, Ia, Ib);
-		if (dets_set.find(det) == dets_set.end()) { // 如果 det 不存在于集合中
-		    dets.emplace_back(det); // 插入到向量中
-		    dets_set.insert(det); // 将 det 插入到集合中
-		}
+                if (e > emin) {
+                    // Find where to inser this determinant
+                    dets.pop_back();
+                    auto it = std::find_if(
+                        dets.begin(), dets.end(),
+                        [&e](const std::tuple<double, double, size_t, size_t, size_t>& t) {
+                            return e > std::get<0>(t);
+                        });
+                    dets.insert(it, std::make_tuple(e, C_ha[Ia][Ib], alfa_sym, Ia, Ib));
+                    emin = std::get<0>(dets.back());
+                }
             }
         }
     }

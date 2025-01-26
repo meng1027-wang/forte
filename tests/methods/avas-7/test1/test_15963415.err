@@ -1,0 +1,6 @@
+
+  Forte is using orbitals from a Psi4 SCF reference.
+  This is not the best for multireference computations.
+  To use Psi4 CASSCF orbitals, set REF_TYPE to CASSCF.
+
+INFO:psi4.driver.driver:Return energy(): -113.91166746720592

@@ -2,11 +2,16 @@
 from typing import List
 from .module import Module
 from forte.data import ForteData
-from forte._forte import to_state_nroots_map, make_active_space_solver, make_mcscf_two_step
+from forte._forte import (
+    to_state_nroots_map,
+    make_active_space_solver,
+    make_mcscf_two_step,
+    MOSpaceInfo,
+    make_mo_space_info_from_map,
+)
 
 
 class MCSCF(Module):
-
     """
     A module to perform MCSCF calculations.
     """
@@ -23,13 +28,19 @@ class MCSCF(Module):
 
     def _run(self, data: ForteData) -> ForteData:
         state_map = to_state_nroots_map(data.state_weights_map)
+
         data.active_space_solver = make_active_space_solver(
             self.solver_type, state_map, data.scf_info, data.mo_space_info, data.options
         )
-        casscf = make_mcscf_two_step(
-            data.active_space_solver, data.state_weights_map, data.scf_info, data.options, data.mo_space_info, data.ints
+        mcscf = make_mcscf_two_step(
+            data.active_space_solver,
+            data.state_weights_map,
+            data.scf_info,
+            data.options,
+            data.mo_space_info,
+            data.ints
         )
-        energy = casscf.compute_energy()
-        data.results.add("energy", energy, "MCSCF energy", "hartree")
+        energy = mcscf.compute_energy()
+        data.results.add("mcscf energy", energy, "MCSCF energy", "hartree")
 
         return data

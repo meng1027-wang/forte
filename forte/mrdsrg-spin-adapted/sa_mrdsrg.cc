@@ -29,10 +29,10 @@
 #include <unistd.h>
 #include <algorithm>
 
-#include "psi4/libmints/molecule.h"
-#include "psi4/libpsi4util/process.h"
 #include "psi4/libpsi4util/PsiOutStream.h"
 #include "psi4/libpsio/psio.hpp"
+
+#include "base_classes/forte_options.h"
 
 #include "helpers/printing.h"
 #include "helpers/timer.h"
@@ -70,6 +70,9 @@ void SA_MRDSRG::read_options() {
 
     rsc_ncomm_ = foptions_->get_int("DSRG_RSC_NCOMM");
     rsc_conv_ = foptions_->get_double("DSRG_RSC_THRESHOLD");
+    rsc_conv_adapt_ = foptions_->get_bool("DSRG_ADAPTIVE_RSC");
+    rsc_conv_adapt_threshold_ = foptions_->get_double("DSRG_ADAPTIVE_RSC_THRESHOLD");
+    rsc_conv_adapt_delta_e_ = foptions_->get_double("DSRG_ADAPTIVE_RSC_DELTA_E_START");
 
     maxiter_ = foptions_->get_int("DSRG_MAXITER");
     e_conv_ = foptions_->get_double("E_CONVERGENCE");
@@ -80,13 +83,15 @@ void SA_MRDSRG::read_options() {
 
     dsrg_trans_type_ = foptions_->get_str("DSRG_TRANS_TYPE");
     if (dsrg_trans_type_ != "UNITARY" && corrlv_string_ == "LDSRG2_QC") {
-        outfile->Printf("\n  Warning: DSRG_TRANS_TYPE option %s is not supported with CORR_LEVEL LDSRG2_QC.");
+        outfile->Printf(
+            "\n  Warning: DSRG_TRANS_TYPE option %s is not supported with CORR_LEVEL LDSRG2_QC.");
         outfile->Printf("\n  Changed DSRG_TRANS_TYPE option to UNITARY");
         dsrg_trans_type_ = "UNITARY";
     }
-    
+
     if (dsrg_trans_type_ != "UNITARY" && sequential_Hbar_) {
-        outfile->Printf("\n  Warning: DSRG_TRANS_TYPE option %s is not supported with DSRG_HBAR_SEQ.");
+        outfile->Printf(
+            "\n  Warning: DSRG_TRANS_TYPE option %s is not supported with DSRG_HBAR_SEQ.");
         outfile->Printf("\n  Changed DSRG_TRANS_TYPE option to UNITARY");
         dsrg_trans_type_ = "UNITARY";
     }
@@ -109,7 +114,7 @@ void SA_MRDSRG::startup() {
     // determine file names
     chk_filename_prefix_ = psi::PSIOManager::shared_object()->get_default_path() + "forte." +
                            std::to_string(getpid()) + "." +
-                           psi::Process::environment.molecule()->name();
+                           std::to_string(mo_space_info_->size("ACTIVE"));
     t1_file_chk_.clear();
     t2_file_chk_.clear();
     if (restart_amps_ and (relax_ref_ != "NONE")) {
@@ -135,13 +140,16 @@ void SA_MRDSRG::print_options() {
                              {"Energy convergence threshold", e_conv_},
                              {"Residual convergence threshold", r_conv_},
                              {"Recursive single commutator threshold", rsc_conv_},
+                             {"Adaptive RSC threshold", rsc_conv_adapt_threshold_},
+                             {"Adaptive RSC delta E", rsc_conv_adapt_delta_e_},
                              {"Taylor expansion threshold", pow(10.0, -double(taylor_threshold_))},
                              {"Intruder amplitudes threshold", intruder_tamp_}});
     printer.add_bool_data({{"Restart amplitudes", restart_amps_},
                            {"Sequential DSRG transformation", sequential_Hbar_},
                            {"Omit blocks of >= 3 virtual indices", nivo_},
                            {"Read amplitudes from current dir", read_amps_cwd_},
-                           {"Write amplitudes to current dir", dump_amps_cwd_}});
+                           {"Write amplitudes to current dir", dump_amps_cwd_},
+                           {"Use adaptive RSC threshold", rsc_conv_adapt_}});
 
     std::vector<std::pair<std::string, std::string>> calculation_info_string{
         {"Correlation level", corrlv_string_},

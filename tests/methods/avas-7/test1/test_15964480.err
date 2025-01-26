@@ -1,0 +1,2 @@
+INFO:psi4.driver.driver:Return energy(): -113.91367781791857
+srun: error: g0705: task 0: Exited with exit code 1

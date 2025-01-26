@@ -34,6 +34,7 @@
 #include "base_classes/mo_space_info.h"
 #include "base_classes/rdms.h"
 #include "base_classes/state_info.h"
+#include "base_classes/forte_options.h"
 
 namespace forte {
 DynamicCorrelationSolver::DynamicCorrelationSolver(std::shared_ptr<RDMs> rdms,
@@ -79,7 +80,7 @@ void DynamicCorrelationSolver::set_state_weights_map(
 }
 
 double DynamicCorrelationSolver::compute_reference_energy() {
-    // Identical to the one in CASSCF_ORB_GRAD class.
+    // Identical to the one in MCSCF_ORB_GRAD class.
     // Eref = Enuc + Eclosed + Fclosed["uv"] * D1["uv"] + 0.5 * (uv|xy) * D2["uxvy"]
     double Eref = Enuc_;
 

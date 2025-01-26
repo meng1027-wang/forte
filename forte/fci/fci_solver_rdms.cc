@@ -54,7 +54,6 @@ FCISolver::rdms(const std::vector<std::pair<size_t, size_t>>& root_list, int max
             return std::vector<std::shared_ptr<RDMs>>(nroots, std::make_shared<RDMsSpinFree>());
         }
     }
-
     std::vector<std::shared_ptr<RDMs>> refs;
     // loop over all the pairs of states
     for (const auto& [root1, root2] : root_list) {
