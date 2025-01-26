@@ -62,7 +62,7 @@ def trans_matrix_order(old_basis, new_basis, old_matrix):
     P = np.zeros((size, size))
     for i, val in enumerate(old_basis):
         j = new_basis.index(val)
-        P[j, i] = 1
+        P[j, i] = 1 
     new_matrix = P @ old_matrix @ P.T   #@==np.dot
     return new_matrix
     

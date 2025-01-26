@@ -1,13 +1,13 @@
-import forte                
-import json         
+import sys
+import forte
+import json
 import numpy as np
 import re
-from create_psi4_cas_hamiltonian import *
 
-def get_ci_and_coeff(file_name):
+def get_ci_and_coeff(mol, file_name):
     _, root_order, s2, irrep, _, ms = file_name.split('_')
     forte_ci_dict = {}
-    with open(file_name, 'r')as r:
+    with open(f'../../{mol}/casscf/{file_name}', 'r')as r:
         lines = r.read().strip().split('\n')
         for line in lines:
             values = re.split(r'\s+', line)  # 使用\s+匹配一个或多个空格
@@ -23,63 +23,62 @@ def dets_coeffs(forte_ci_dict): #实际获得的是str和对应的coeffs
     for str, coeff in forte_ci_dict.items():
         dets.append(str)
         coeffs.append(coeff)
-    return dets, coeffs 
-    
-    
+    return dets, coeffs
+
+
 def tdm_1_test(strs1, coeffs1, strs2, coeffs2, p, q): ##a^(+)_(pα)a_(qβ) using SparseOperato and StateVector
-    op = forte.SparseOperator(antihermitian=False)
-    op.add_term_from_str(f'[{p}a+ {q}b-]',1.0)
-    val = 0 
+    op = forte.SparseOperatorList()
+    op.add(f'[{p}a+ {q}b-]',1.0)
+    val = 0
     for i, coeff_i in enumerate(coeffs1):
         for j, coeff_j in enumerate(coeffs2):
-            det_i = forte.StateVector({ forte.det(strs1[i]): coeff_i})
-            det_j = forte.StateVector({ forte.det(strs2[j]): coeff_j})
-            # print(det_j)
-            c = forte.get_projection(op, det_j, det_i)            
-            val += c[0]                    
+            det_i = forte.SparseState({ forte.det(strs1[i]): coeff_i})
+            det_j = forte.SparseState({ forte.det(strs2[j]): coeff_j})
+            c = forte.get_projection(op, det_j, det_i)
+            val += c[0]
     return val
 
 def tdm_2_test(strs1, coeffs1, strs2, coeffs2, p, q): #a^(+)_(pβ)a_(qα) using SparseOperato and StateVector
-    op = forte.SparseOperator(antihermitian=False)
-    op.add_term_from_str(f'[{p}b+ {q}a-]',1.0)
-    val = 0 
-    for i, coeff_i in enumerate(coeffs1):       
+    op = forte.SparseOperatorList()
+    op.add(f'[{p}b+ {q}a-]',1.0)
+    val = 0
+    for i, coeff_i in enumerate(coeffs1):
         for j, coeff_j in enumerate(coeffs2):
-            det_i = forte.StateVector({ forte.det(strs1[i]): coeff_i})
-            det_j = forte.StateVector({ forte.det(strs2[j]): coeff_j})
+            det_i = forte.SparseState({ forte.det(strs1[i]): coeff_i})
+            det_j = forte.SparseState({ forte.det(strs2[j]): coeff_j})
             c = forte.get_projection(op, det_j, det_i)
-            val += c[0]                    
+            val += c[0]
     return val
 
 def tdm_3_test(strs1, coeffs1, strs2, coeffs2, p, q): ##a^(+)_(pα)a_(qα) using SparseOperato and StateVector
-    op = forte.SparseOperator(antihermitian=False)
-    op.add_term_from_str(f'[{p}a+ {q}a-]',1.0)
-    val = 0 
-    for i, coeff_i in enumerate(coeffs1):        
+    op = forte.SparseOperatorList()
+    op.add(f'[{p}a+ {q}a-]',1.0)
+    val = 0
+    for i, coeff_i in enumerate(coeffs1):
         for j, coeff_j in enumerate(coeffs2):
-            det_i = forte.StateVector({ forte.det(strs1[i]): coeff_i})
-            det_j = forte.StateVector({ forte.det(strs2[j]): coeff_j})
+            det_i = forte.SparseState({ forte.det(strs1[i]): coeff_i})
+            det_j = forte.SparseState({ forte.det(strs2[j]): coeff_j})
             c = forte.get_projection(op, det_j, det_i)
-            val += c[0]                    
+            val += c[0]
     return val
 
 def tdm_4_test(strs1, coeffs1, strs2, coeffs2, p, q): ##a^(+)_(pβ)a_(qβ) using SparseOperato and StateVector
-    op = forte.SparseOperator(antihermitian=False)
-    op.add_term_from_str(f'[{p}b+ {q}b-]',1.0)
-    val = 0 
+    op = forte.SparseOperatorList()
+    op.add(f'[{p}b+ {q}b-]',1.0)
+    val = 0
     for i, coeff_i in enumerate(coeffs1):
         for j, coeff_j in enumerate(coeffs2):
-            det_i = forte.StateVector({ forte.det(strs1[i]): coeff_i})
-            det_j = forte.StateVector({ forte.det(strs2[j]): coeff_j})
+            det_i = forte.SparseState({ forte.det(strs1[i]): coeff_i})
+            det_j = forte.SparseState({ forte.det(strs2[j]): coeff_j})
             c = forte.get_projection(op, det_j, det_i)
-            val += c[0]                    
+            val += c[0]
     return val
 
 def tdm_matrix(nact, forte_ci_dict1, forte_ci_dict2):# irrep_order, mo_irrep
     strs1, coeffs1 = dets_coeffs(forte_ci_dict1)
     strs2, coeffs2 = dets_coeffs(forte_ci_dict2)
     tdm_matrix_x,  tdm_matrix_y, tdm_matrix_z= [np.zeros((nact, nact), dtype=complex) for _ in range(3)]
-    
+
     for p in range(nact):
         for q in range(nact):
 
@@ -93,14 +92,14 @@ def tdm_matrix(nact, forte_ci_dict1, forte_ci_dict2):# irrep_order, mo_irrep
             tdm_matrix_z[p, q] += 0.5 * tdm_3_test(strs1, coeffs1, strs2, coeffs2, p, q)
             tdm_matrix_z[p, q] -= 0.5 * tdm_4_test(strs1, coeffs1, strs2, coeffs2, p, q)
             # print(f'---------------------{tdm_matrix_z[p, q]}')
-    tdm_matrix = np.array([tdm_matrix_x,  tdm_matrix_y, tdm_matrix_z])     
+    tdm_matrix = np.array([tdm_matrix_x,  tdm_matrix_y, tdm_matrix_z])
     # print(tdm_matrix_z)
     # print(tdm_matrix)
     # print(np.linalg.norm(tdm_matrix))
     # print(np.linalg.eigh(tdm_matrix)[0])
     return tdm_matrix
 
-def h_soc_element(nact, forte_ci_dict1, forte_ci_dict2, f_pq): # irrep_order, mo_irrep, 
+def h_soc_element(nact, forte_ci_dict1, forte_ci_dict2, f_pq): # irrep_order, mo_irrep,
     # only get matrix element of hamiltion_soc
     tdm = tdm_matrix(nact, forte_ci_dict1, forte_ci_dict2)
     # print(tdm)
@@ -118,9 +117,9 @@ def h_soc_element(nact, forte_ci_dict1, forte_ci_dict2, f_pq): # irrep_order, mo
 #             # print(f'element: {element}')
 #             indice1 = ci_list.index(i_ci)
 #             indice2 = ci_list.index(j_ci)
-#             h_soc[indice1, indice2] += element        
+#             h_soc[indice1, indice2] += element
     return h_soc
-def h_soc_based_ci(nact, ci_list, f_pq, info_list): # irrep_order, mo_irrep, 
+def h_soc_based_ci(nact, ci_list, f_pq, info_list): # irrep_order, mo_irrep,
     h_soc = np.zeros((len(ci_list), len(ci_list)), dtype=complex)
     # print(len(ci_list))
     for indice1, i_ci in enumerate(ci_list):
@@ -131,10 +130,10 @@ def h_soc_based_ci(nact, ci_list, f_pq, info_list): # irrep_order, mo_irrep,
             # print(indice1, indice2)
             i_info = info_list[indice1]
             _, multi_i, _, ms2_i = i_info.split(' ')
-            
+
             j_info = info_list[indice2]
             _, multi_j, _, ms2_j = j_info.split(' ')
-       
+
             if abs(int(multi_i) - int(multi_j)) <= 2:
                 if abs(int(ms2_i) - int(ms2_j)) <= 2:
                     element = h_soc_element(nact, i_ci, j_ci, f_pq)
@@ -146,12 +145,22 @@ def h_soc_based_ci(nact, ci_list, f_pq, info_list): # irrep_order, mo_irrep,
     # print('----------------')
     return h_soc
 
-def get_ci_list(info_list): # 按顺序产生生成SOC矩阵的基，将他们存在一个List里
+def get_ci_list(mol, info_list): # 按顺序产生生成SOC矩阵的基，将他们存在一个List里
     ci_list = []
     for info in info_list:
         root_order, multi, irrep, ms2 = info.split(' ')
+        # s = (int(multi) - 1) / 2
+        # file_name = 'output_root' + root_order + '_' + str(s * (s + 1)) + '_' + irrep + '_' + 'ms_' + str(int(ms2) / 2) + '.txt'
+
         s = (int(multi) - 1) / 2
-        file_name = 'output_root' + root_order + '_' + str(s * (s + 1)) + '_' + irrep + '_' + 'ms_' + str(int(ms2) / 2) + '.txt'
-        ci = get_ci_and_coeff(file_name)
+        spin_value = s * (s + 1)
+        ms_value = int(ms2) / 2
+
+        # 判断是否为整数，去掉小数部分。is_integer(): 用于判断一个浮点数是否是整数（即小数部分为0）。如果是整数，使用 int() 将其转换为整数。
+        spin_str = str(int(spin_value)) if spin_value.is_integer() else str(spin_value)
+        ms_str = str(int(ms_value)) if ms_value.is_integer() else str(ms_value)
+
+        file_name = 'output_root' + root_order + '_' + spin_str + '_' + irrep + '_' + 'ms_' + ms_str + '.txt'
+        ci = get_ci_and_coeff(mol, file_name)
         ci_list.append(ci)
     return ci_list
