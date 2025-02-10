@@ -1922,7 +1922,6 @@ FCI_MO::rdms(const std::vector<std::pair<size_t, size_t>>& root_list, int max_rd
     if (max_rdm_level > 3 || max_rdm_level < 1) {
         throw psi::PSIEXCEPTION("Invalid max_rdm_level, required 1 <= max_rdm_level <= 3.");
     }
-
     std::vector<std::shared_ptr<RDMs>> refs;
 
     // TODO: change this when other methods support disk

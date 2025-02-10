@@ -65,6 +65,11 @@ void export_ActiveSpaceSolver(py::module& m) {
              "Return a map from StateInfo to wave function file names")
         .def("dump_wave_function", &ActiveSpaceSolver::dump_wave_function,
              "Dump wave functions to disk")
+        // wm add
+        .def("get_hamiltonian", &ActiveSpaceSolver::get_hamiltonian,
+             "as_ints"_a, "max_body"_a,
+             "get the matrix of hamiltonian of dsrg(unrelaxed)")
+        //end
         .def("eigenvectors", &ActiveSpaceSolver::eigenvectors, "Return the CI wave functions");
 
     m.def("compute_average_state_energy", &compute_average_state_energy,

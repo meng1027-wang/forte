@@ -125,6 +125,7 @@ void SCFInfo::rotate_orbitals(std::shared_ptr<psi::Matrix> Ua, std::shared_ptr<p
 
     // 2. Update the orbital coefficients and optionally re-transform the integrals
     update_orbitals(Ca_rotated, Cb_rotated, transform_ints);
+    std::cout << "wm test if can get fock matrix from ints" << std::endl;
 }
 
 void SCFInfo::reorder_orbitals(const std::vector<std::vector<size_t>>& new_order) {

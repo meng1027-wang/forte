@@ -164,6 +164,12 @@ class ActiveSpaceSolver {
 
     /// Return a map of StateInfo to the computed nroots of energies
     const std::map<StateInfo, std::vector<double>>& state_energies_map() const;
+
+    //wm add conde for tets
+    std::tuple<psi::Matrix, std::vector<std::string>> get_hamiltonian(std::shared_ptr<ActiveSpaceIntegrals> as_ints,
+                                                         int max_rdm_level);
+    //end
+
     /// Return a map of StateInfo to the CI wave functions (deterministic determinant space)
     std::map<StateInfo, std::shared_ptr<psi::Matrix>> state_ci_wfn_map() const;
 

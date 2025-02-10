@@ -838,10 +838,34 @@ make_state_weights_map(std::shared_ptr<ForteOptions> options,
                     gas_max[gasn] = gas_space_max[i];
                 }
             }
+            // init code of forte
+            // StateInfo state_this(state.na(), state.nb(), multi, state.twice_ms(), irrep,
+            //                      irrep_label, gas_min, gas_max);
+            // state_weights_map[state_this] = weights;
+            // init code of forte end
 
-            StateInfo state_this(state.na(), state.nb(), multi, state.twice_ms(), irrep,
-                                 irrep_label, gas_min, gas_max);
-            state_weights_map[state_this] = weights;
+            // wm test add
+            for (double ms = (-(multi- 1) / 2.0); ms <= ((multi - 1) / 2.0); ++ms) {
+                // std::cout << ms << std::endl;
+                int nel = state.na() + state.nb();
+                size_t na = (nel + 2 * ms) / 2;
+                size_t nb = nel - na;
+                StateInfo state_this(na, nb, multi, 2 * ms, irrep, irrep_label,
+                                     gas_min, gas_max);
+
+                // 重新初始化weights为初始值，假设每个weights初始都是1
+                // std::vector<double> local_weights(weights.size(), 1.0);  // 假设weights.size()已知，且初始值为1
+
+                // std::transform(local_weights.begin(), local_weights.end(), local_weights.begin(),
+                //                 [multi](auto& w) { return w / multi; });
+                // state_weights_map[state_this] = local_weights;
+
+                std::vector<double> local_weights = weights;
+                std::transform(local_weights.begin(), local_weights.end(), local_weights.begin(),
+                                [multi](auto& w) { return w / multi; });
+                state_weights_map[state_this] = local_weights;
+            }
+            // wm test add end
         }
 
         // normalize weights
@@ -1017,6 +1041,99 @@ ActiveSpaceSolver::compute_contracted_energy(std::shared_ptr<ActiveSpaceIntegral
     print_energies();
     return state_energies_map_;
 }
+
+// wm add codes for test
+std::tuple<psi::Matrix, std::vector<std::string>> ActiveSpaceSolver::get_hamiltonian(std::shared_ptr<ActiveSpaceIntegrals> as_ints,
+                                             int max_rdm_level) {
+    if (state_method_map_.size() == 0) {
+        throw psi::PSIEXCEPTION("Old CI determinants are not solved. Call compute_energy first.");
+    }
+
+    state_energies_map_.clear();
+    state_contracted_evecs_map_.clear();
+
+    // prepare integrals
+    size_t nactv = mo_space_info_->size("ACTIVE");
+    auto init_fill_tensor = [nactv](std::string name, size_t dim, std::vector<double> data) {
+        ambit::Tensor out =
+            ambit::Tensor::build(ambit::CoreTensor, name, std::vector<size_t>(dim, nactv));
+        out.data() = data;
+        return out;
+    };
+    ambit::Tensor oei_a = init_fill_tensor("oei_a", 2, as_ints->oei_a_vector());
+    ambit::Tensor oei_b = init_fill_tensor("oei_a", 2, as_ints->oei_b_vector());
+    ambit::Tensor tei_aa = init_fill_tensor("tei_aa", 4, as_ints->tei_aa_vector());
+    ambit::Tensor tei_ab = init_fill_tensor("tei_ab", 4, as_ints->tei_ab_vector());
+    ambit::Tensor tei_bb = init_fill_tensor("tei_bb", 4, as_ints->tei_bb_vector());
+
+    // TODO: check three-body integrals available or not
+    //    bool do_three_body = (max_body_ == 3 and max_rdm_level_ == 3) ? true : false;
+
+    // TODO: adapt DressedQuantity for spin-free RDMs
+    DressedQuantity ints(0.0, oei_a, oei_b, tei_aa, tei_ab, tei_bb);
+
+
+    // Calculate total size for the hamiltonian matrix---加的
+    size_t total_size = 0;
+    for (const auto& state_nroots : state_nroots_map_) {
+        total_size += state_nroots.second;
+    }
+
+    // Create the hamiltonian matrix---加的
+    psi::Matrix hamiltonian("Hamiltonian", total_size, total_size);
+    std::vector<std::string> substates;
+
+    size_t current_offset = 0;//---加的
+
+
+    for (const auto& state_nroots : state_nroots_map_) {
+        const auto& state = state_nroots.first;
+        size_t nroots = state_nroots.second;
+        std::string state_name = state.multiplicity_label() + " " + state.irrep_label();
+        auto method = state_method_map_.at(state);
+        // std::cout << "pdms_test"<< state_name << std::endl; //自己加的
+        // form the Hermitian effective Hamiltonian
+        print_h2("Building Effective Hamiltonian for " + state_name);
+        psi::Matrix Heff("Heff " + state_name, nroots, nroots);
+
+        for (size_t A = 0; A < nroots; ++A) {
+            std::string info_substate = std::to_string(A)+ " " + std::to_string(state.multiplicity())
+            + " " + std::to_string(state.irrep()) + " " + std::to_string(state.twice_ms());
+            substates.push_back(info_substate);
+            for (size_t B = A; B < nroots; ++B) {
+                // just compute transition rdms of <A|sqop|B>
+                std::vector<std::pair<size_t, size_t>> root_list{std::make_pair(A, B)};
+                std::shared_ptr<RDMs> rdms =
+                    method->rdms(root_list, max_rdm_level, RDMsType::spin_dependent)[0];
+                for (int i = 0; i < 10; ++i) {
+                    std::cout << "*";
+                }
+                std::cout << std::endl; // 换行
+                double H_AB = ints.contract_with_rdms(rdms);
+                if (A == B) {
+                    H_AB += as_ints->nuclear_repulsion_energy() + as_ints->scalar_energy() +
+                            as_ints->frozen_core_energy();
+                    Heff.set(A, B, H_AB);
+                } else {
+                    Heff.set(A, B, H_AB);
+                    Heff.set(B, A, H_AB);
+                }
+            }
+        }
+
+        // Insert Heff into the hamiltonian matrix---加的
+        for (size_t A = 0; A < nroots; ++A) {
+            for (size_t B = 0; B < nroots; ++B) {
+                hamiltonian.set(current_offset + A, current_offset + B, Heff.get(A, B));
+            }
+        }
+        current_offset += nroots;
+    }
+
+    return std::make_tuple(hamiltonian, substates);
+}
+// wm add end
+
 
 double
 compute_average_state_energy(const std::map<StateInfo, std::vector<double>>& state_energies_map,

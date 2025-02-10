@@ -253,6 +253,13 @@ class ProcedureDSRG:
             #       However, the ForteIntegrals object and the dipole integrals always refer to the current semi-canonical basis.
             #       so to compute the dipole moment correctly, we need to make the RDMs and orbital basis consistent
             ints_dressed = self.dsrg_solver.compute_Heff_actv()
+            # wm add code s for test
+            max_rdm_level = 3 if self.options.get_bool("FORM_HBAR3") else 2
+            hamiltonian_c, substats_info = self.active_space_solver.get_hamiltonian(ints_dressed, max_rdm_level)
+            hamiltonian = hamiltonian_c.to_array()
+            np.save('hamiltonian.npy', hamiltonian)
+            np.save('substates.npy', np.array(substats_info))
+            #end
             if self.fno_pt2_Heff_shift is not None:
                 ints_dressed.add(self.fno_pt2_Heff_shift, 1.0)
                 psi4.core.print_out("\n\n  Applied DSRG-MRPT2 FNO corrections to dressed integrals.")

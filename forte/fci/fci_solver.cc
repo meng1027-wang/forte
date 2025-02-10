@@ -49,6 +49,10 @@
 #endif
 
 #include "psi4/psi4-dec.h"
+// wm add
+#include <fstream> //为了打印
+#include <iomanip> // 包含 <iomanip> 头文件
+// wm add end
 
 namespace forte {
 
@@ -295,7 +299,7 @@ double FCISolver::compute_energy() {
 
     // Print determinants
     if (print_ >= PrintLevel::Default) {
-        print_solutions(100, b, b_basis, dl_solver_);
+        print_solutions(10000, b, b_basis, dl_solver_); //wm: init:100; modify:10000
     }
 
     // Optionally, test the RDMs
@@ -316,8 +320,22 @@ double FCISolver::compute_energy() {
 void FCISolver::print_solutions(size_t sample_size, std::shared_ptr<psi::Vector> b,
                                 std::shared_ptr<psi::Vector> b_basis,
                                 std::shared_ptr<DavidsonLiuSolver> dls) {
+    std::ofstream output_file; //wm add
     for (size_t r = 0; r < nroot_; ++r) {
         psi::outfile->Printf("\n\n  ==> Root No. %d <==\n", r);
+
+        // wm add    
+        std::stringstream filename_stream;
+        double spin2_value = (spin2_[r] < 1.0e-12) ? 0 : spin2_[r];
+            
+        int twice_ms = state().twice_ms();
+        double ms_my = twice_ms / 2.0;
+        // filename_stream << std::defaultfloat;
+        filename_stream << "output_root" << r << "_" << spin2_value << "_" << symmetry_ << "_" << "ms" 
+                << "_" << ms_my << ".txt";
+        std::string filename = filename_stream.str();
+        output_file.open(filename);
+        // wm add end
 
         b_basis = dls->eigenvector(r);
         if (spin_adapt_) {
@@ -349,20 +367,26 @@ void FCISolver::print_solutions(size_t sample_size, std::shared_ptr<psi::Vector>
                     bool b = Ib_v[i];
                     if (a == b) {
                         psi::outfile->Printf("%d", a ? 2 : 0);
+                        output_file << (a ? 2 : 0); //wm add
                     } else {
                         psi::outfile->Printf("%c", a ? 'a' : 'b');
+                        output_file << (a ? 'a' : 'b'); //wm add
                     }
                 }
                 if (active_dim_[h] != 0)
                     psi::outfile->Printf(" ");
+                    output_file << " "; // wm add
                 offset += active_dim_[h];
             }
             psi::outfile->Printf("%15.8f", ci);
+            output_file << std::setprecision(8) << ci; //wm add
+	        output_file << "\n"; //wm add
         }
 
         double root_energy = dl_solver_->eigenvalues()->get(r);
 
         psi::outfile->Printf("\n\n    Total Energy: %20.12f, <S^2>: %8.6f", root_energy, spin2_[r]);
+        output_file.close(); //wm add
     }
 }
 

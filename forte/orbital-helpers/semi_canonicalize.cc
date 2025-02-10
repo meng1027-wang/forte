@@ -129,7 +129,7 @@ void SemiCanonical::semicanonicalize(std::shared_ptr<RDMs> rdms, bool build_fock
     outfile->Printf("\n    MIX GAS ACTIVE ORBITALS       %s", true_or_false(active_mix_));
 
     // build Fock matrix
-    if (build_fock) {
+    if (build_fock) { //设置为false,在mcscf_2step/compute_energy里
         timer t_fock("build Fock");
         // use spin-free 1-RDM
         // TODO: this need to be changed if UHF reference is available
@@ -139,7 +139,7 @@ void SemiCanonical::semicanonicalize(std::shared_ptr<RDMs> rdms, bool build_fock
     }
 
     // build transformation matrix based on Fock or 1-RDM
-    bool already_semi = check_orbitals(rdms, orb_type);
+    bool already_semi = check_orbitals(rdms, orb_type); //false
     build_transformation_matrices(already_semi);
     if (transform and (not already_semi)) {
         scf_info_->rotate_orbitals(Ua_, Ub_);
@@ -197,7 +197,7 @@ bool SemiCanonical::check_orbitals(std::shared_ptr<RDMs> rdms, ActiveOrbitalType
 
     if (print_) {
         outfile->Printf("\n    %s", dash.c_str());
-        outfile->Printf("\n\n    Canonicalization test %s\n", semi ? "passed" : "failed");
+        outfile->Printf("\n\n    Canonicalization test %s\n", semi ? "passed" : "failed"); //failed
     }
 
     return semi;
@@ -227,8 +227,13 @@ void SemiCanonical::prepare_matrix_blocks(std::shared_ptr<RDMs> rdms, ActiveOrbi
         auto slice = mo_space_info_->range(name);
         if (mo_space_info_->contained_in_space(name, "ACTIVE")) {
             if (orb_type == ActiveOrbitalType::unspecified) {
+                //add
+                std::cout << "1wm test for testing if be fock active orbitals" << std::endl;
+                fock->get_block(slice, slice)->save("fock_if_active", false, false, false);
+                //end
                 continue;
             } else if (orb_type == ActiveOrbitalType::natural) {
+                std::cout << "2wm test for testing if be fock active orbitals" << std::endl;
                 // For natural orbitals, diagonalize the 1-RDM in the active space
                 auto actv_slice =
                     psi::Slice(slice.begin() - docc_offset, slice.end() - docc_offset);
@@ -236,8 +241,10 @@ void SemiCanonical::prepare_matrix_blocks(std::shared_ptr<RDMs> rdms, ActiveOrbi
                 mats_[name]->set_name("D1 " + name);
             } else {
                 // By default, diagonalize the Fock in the active space
+                std::cout << "3wm test for testing if be fock active orbitals" << std::endl;
                 mats_[name] = fock->get_block(slice, slice);
                 mats_[name]->set_name("Fock " + name);
+                fock->get_block(slice, slice)->save("fock_if_active", false, false, true);
             }
         } else {
             // for all other spaces always diagonalize the Fock matrix
@@ -262,6 +269,8 @@ void SemiCanonical::build_transformation_matrices(const bool& semi) {
             // natural orbital in descending order, canonical orbital in ascending order
             bool ascending = M->name().find("Fock") != std::string::npos;
 
+            std::cout << "wm test if active space will participate in diagonalization" << std::endl;
+            std::cout << M->name() << std::endl;
             // diagonalize this block
             auto Usub = std::make_shared<psi::Matrix>("U " + name, M->rowspi(), M->colspi());
             auto evals = std::make_shared<psi::Vector>("evals" + name, M->rowspi());

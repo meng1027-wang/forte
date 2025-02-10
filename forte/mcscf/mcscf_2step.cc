@@ -25,6 +25,14 @@
  *
  * @END LICENSE
  */
+// wm add
+#include <iostream>
+#include <fstream> // 需要包含此头文件才能使用 std::ofstream
+#include <iomanip>
+#include <map>
+#include <vector>
+#include "base_classes/mo_space_info.h"
+// wm add end
 
 #include "ambit/tensor.h"
 
@@ -436,7 +444,7 @@ double MCSCF_2STEP::compute_energy() {
     if (ints_->integral_type() != Custom) {
         // fix orbitals for redundant pairs
         rdms = as_solver_->compute_average_rdms(state_weights_map_, 1, RDMsType::spin_free);
-        auto F = cas_grad.fock(rdms);
+        auto F = cas_grad.fock(rdms); //active部分用到了1rdm? unactive部分没用到，为什么？
         ints_->set_fock_matrix(F, F);
 
         // if we do not freeze orbitals, we need to set the inactive_mix flag to make sure
@@ -449,8 +457,24 @@ double MCSCF_2STEP::compute_energy() {
         ActiveOrbitalType actv_orb_type(options_->get_str("MCSCF_FINAL_ORBITAL"));
         SemiCanonical semi(mo_space_info_, ints_, scf_info_, inactive_mix, active_mix);
         semi.semicanonicalize(rdms, false, actv_orb_type, false);
-
+        // // add
+        // rdms->rotate(semi.Ua_t(), semi.Ub_t());
+        // rdms->SF_G1().print();
+        // // end
         cas_grad.canonicalize_final(semi.Ua());
+        // add
+        rdms->rotate(semi.Ua_t(), semi.Ub_t());
+        rdms->SF_G1().print();
+        rdms->save_SF_G1("1rdm_mo");
+        // end
+        // add
+        std::cout << "wm test if can get fock matrix from ints" << std::endl;
+        auto F1 = cas_grad.fock(rdms);
+        F1->save("fock", false, false, false);
+        // rdms->SF_G1().print();
+        // end
+
+
 
         // pass to wave function
         auto Ca = cas_grad.Ca();
@@ -525,6 +549,25 @@ MCSCF_2STEP::diagonalize_hamiltonian(std::shared_ptr<ActiveSpaceIntegrals> fci_i
     as_solver_->set_active_space_integrals(fci_ints);
 
     const auto state_energies_map = as_solver_->compute_energy();
+    // wm test
+    std::cout << "state_energies_map_20241119" << std::endl;
+    std::ofstream outfile("state_energy.txt");
+    for (const auto& pair : state_energies_map) {
+        const StateInfo& state = pair.first;
+        const std::vector<double>& values = pair.second;
+
+        // 输出 vector<double> 的内容
+        for (size_t i = 0; i < values.size(); ++i) {
+            outfile << i << " " << state.multiplicity() << " " << state.irrep() << " " << state.twice_ms() << " ";
+            outfile << std::fixed << std::setprecision(8) << values[i] << "\n";
+            // if (i < values.size() - 1) {
+            //     outfile << " ";
+            // }
+        }
+    }
+    // 关闭文件
+    outfile.close();
+    // end
 
     if (dump_wfn)
         as_solver_->dump_wave_function();

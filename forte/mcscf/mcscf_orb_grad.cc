@@ -747,7 +747,7 @@ std::shared_ptr<psi::Matrix> MCSCF_ORB_GRAD::fock(std::shared_ptr<RDMs> rdms) {
     auto rdm1 = tensor_to_matrix(rdms->SF_G1(), nactvpi_);
 
     // use ForteIntegrals to build Fock
-    auto Ftuple = ints_->make_fock_inactive(psi::Dimension(nirrep_), ndoccpi_);
+    auto Ftuple = ints_->make_fock_inactive(psi::Dimension(nirrep_), ndoccpi_); //nirrep_:不可约表示个数
     auto Fock = std::get<0>(Ftuple);
     Fock->add(ints_->make_fock_active_restricted(rdm1));
     Fock->set_name("Fock");
